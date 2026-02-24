@@ -1,7 +1,6 @@
 import mineflayer from 'mineflayer';
 import { Telegraf, Markup } from 'telegraf';
 import express from 'express';
-import pino from 'pino';
 import dotenv from 'dotenv';
 import fs from 'fs';
 import path from 'path';
@@ -9,27 +8,9 @@ import { fileURLToPath } from 'url';
 
 dotenv.config();
 
-// Logger setup
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const logsDir = path.join(__dirname, 'logs');
-if (!fs.existsSync(logsDir)) fs.mkdirSync(logsDir);
 
-const logger = pino(
-  {
-    level: process.env.LOG_LEVEL || 'info',
-    transport: {
-      target: 'pino-pretty',
-      options: {
-        colorize: true,
-        translateTime: 'SYS:standard',
-        ignore: 'pid,hostname'
-      }
-    }
-  },
-  pino.destination(path.join(logsDir, 'bot.log'))
-);
-
-// Configuration validation
+// ======================== КОНФИГУРАЦИЯ ========================
 const config = {
   tg: {
     token: process.env.TG_TOKEN,
@@ -46,27 +27,408 @@ const config = {
   }
 };
 
-// Validation
-if (!config.tg.token) {
-  logger.error('❌ TG_TOKEN не установлен в .env');
-  process.exit(1);
+// ======================== ЛОГИРОВАНИЕ ========================
+const log = (prefix, msg) => {
+  const timestamp = new Date().toLocaleTimeString('ru-RU');
+  console.log(`[${timestamp}] ${prefix} ${msg}`);
+};
+
+const logError = (msg) => log('❌', msg);
+const logInfo = (msg) => log('✅', msg);
+const logWarn = (msg) => log('⚠️', msg);
+const logDebug = (msg) => log('🔍', msg);
+
+// ======================== БД ДАННЫХ ========================
+class Database {
+  constructor() {
+    this.dbPath = path.join(__dirname, 'data.json');
+    this.data = {
+      donators: {}, // { username: { rank: 'VIP', joinedAt: timestamp } }
+      commandCooldowns: {}, // { username: { lastCommand: timestamp, command: 'name' } }
+      stats: {
+        totalCommands: 0,
+        totalDonats: 0,
+        activePlayers: 0
+      }
+    };
+    this.load();
+  }
+
+  load() {
+    try {
+      if (fs.existsSync(this.dbPath)) {
+        const content = fs.readFileSync(this.dbPath, 'utf-8');
+        this.data = JSON.parse(content);
+        logInfo('БД загружена');
+      }
+    } catch (error) {
+      logError(`Ошибка загрузки БД: ${error.message}`);
+    }
+  }
+
+  save() {
+    try {
+      fs.writeFileSync(this.dbPath, JSON.stringify(this.data, null, 2));
+    } catch (error) {
+      logError(`Ошибка сохранения БД: ${error.message}`);
+    }
+  }
+
+  addDonator(username, rank) {
+    this.data.donators[username] = {
+      rank,
+      joinedAt: Date.now()
+    };
+    this.data.stats.totalDonats++;
+    this.save();
+    logInfo(`Донат добавлен: ${username} - ${rank}`);
+  }
+
+  getDonator(username) {
+    return this.data.donators[username] || null;
+  }
+
+  getCooldown(username) {
+    return this.data.commandCooldowns[username] || null;
+  }
+
+  setCooldown(username, cooldownMs = 300000) { // 5 минут по умолчанию
+    this.data.commandCooldowns[username] = {
+      lastCommand: Date.now(),
+      expiresAt: Date.now() + cooldownMs
+    };
+    this.save();
+  }
+
+  isOnCooldown(username) {
+    const cooldown = this.getCooldown(username);
+    if (!cooldown) return false;
+
+    const now = Date.now();
+    if (now > cooldown.expiresAt) {
+      delete this.data.commandCooldowns[username];
+      this.save();
+      return false;
+    }
+    return true;
+  }
+
+  getCooldownTimeLeft(username) {
+    const cooldown = this.getCooldown(username);
+    if (!cooldown) return 0;
+
+    const timeLeft = cooldown.expiresAt - Date.now();
+    return Math.max(0, timeLeft);
+  }
 }
 
-if (!config.tg.adminId) {
-  logger.error('❌ ADMIN_ID не установлен в .env');
-  process.exit(1);
+const db = new Database();
+
+// ======================== ПРОВЕРКА СЕРВЕРА ========================
+class ServerChecker {
+  constructor(host, port, timeout = 5000) {
+    this.host = host;
+    this.port = port;
+    this.timeout = timeout;
+    this.isOnline = false;
+    this.lastCheckTime = 0;
+  }
+
+  async check() {
+    return new Promise((resolve) => {
+      const socket = require('net').createConnection(this.port, this.host);
+      const timer = setTimeout(() => {
+        socket.destroy();
+        resolve(false);
+      }, this.timeout);
+
+      socket.on('connect', () => {
+        clearTimeout(timer);
+        socket.destroy();
+        resolve(true);
+      });
+
+      socket.on('error', () => {
+        clearTimeout(timer);
+        resolve(false);
+      });
+    });
+  }
+
+  async updateStatus() {
+    const wasOnline = this.isOnline;
+    this.isOnline = await this.check();
+    this.lastCheckTime = Date.now();
+
+    if (!wasOnline && this.isOnline) {
+      logInfo('🟢 СЕРВЕР ОНЛАЙН!');
+    } else if (wasOnline && !this.isOnline) {
+      logWarn('🔴 СЕРВЕР ОФФЛАЙН!');
+    }
+
+    return this.isOnline;
+  }
 }
 
-// Express Server
+const serverChecker = new ServerChecker(config.mc.host, config.mc.port);
+
+// ======================== TELEGRAM БОТ ========================
+const tgBot = new Telegraf(config.tg.token);
+
+let bot = null;
+let reconnectAttempts = 0;
+const MAX_RECONNECT = 20;
+
+// ======================== MC БОТ ========================
+function createMCBot() {
+  if (!serverChecker.isOnline) {
+    logWarn('Сервер оффлайн, отложу подключение на 30 сек');
+    setTimeout(createMCBot, 30000);
+    return;
+  }
+
+  try {
+    logInfo('Попытка подключения к MC серверу...');
+
+    bot = mineflayer.createBot({
+      host: config.mc.host,
+      port: config.mc.port,
+      username: config.mc.username,
+      version: config.mc.version,
+      auth: 'offline',
+      hideErrors: false
+    });
+
+    // ========== SPAWN ==========
+    bot.on('spawn', () => {
+      logInfo('🎮 БОТ УСПЕШНО ВОШЕЛ НА СЕРВЕР!');
+      reconnectAttempts = 0;
+
+      setTimeout(() => {
+        bot.chat('🤖 VoyagersSpace система активирована!');
+      }, 2000);
+
+      tgBot.telegram.sendMessage(
+        config.tg.adminId,
+        '✅ <b>БОТ ПОДКЛЮЧЕН К СЕРВЕРУ</b>\n\n🎮 Система готова к работе!\n⏰ Время: ' + new Date().toLocaleTimeString('ru-RU'),
+        { parse_mode: 'HTML' }
+      ).catch(err => logError(`Ошибка отправки уведомления: ${err.message}`));
+    });
+
+    // ========== PLAYERS ==========
+    bot.on('playerJoined', (player) => {
+      if (player.username === bot.username) return;
+
+      logInfo(`👤 Игрок присоединился: ${player.username}`);
+      const donator = db.getDonator(player.username);
+      const rankText = donator ? ` (${donator.rank})` : '';
+
+      bot.chat(`👋 Добро пожаловать, ${player.username}${rankText}!`);
+
+      tgBot.telegram.sendMessage(
+        config.tg.adminId,
+        `🚀 <b>Игрок присоединился</b>\n<code>${player.username}</code>${rankText}\n👥 Онлайн: ${Object.keys(bot.players).length}`,
+        { parse_mode: 'HTML' }
+      ).catch(err => logError(`Ошибка: ${err.message}`));
+    });
+
+    bot.on('playerLeft', (player) => {
+      logInfo(`👋 Игрок вышел: ${player.username}`);
+    });
+
+    // ========== ЧАТЫ ИГРОКОВ ==========
+    bot.on('message', (jsonMsg) => {
+      try {
+        const message = jsonMsg.toString();
+        logDebug(`Чат: ${message}`);
+
+        // Парсим сообщения игроков (для групп при сканировании)
+        if (botState.isCapturingGroups) {
+          const match = message.match(/-\s*([a-zA-Z0-9_]+)/);
+          if (match && match[1]) {
+            const group = match[1];
+            const ignoreList = ['lp', 'luckperms', 'groups', 'info', 'usage', 'default', 'error', 'players', 'error', 'permission'];
+
+            if (!ignoreList.includes(group.toLowerCase()) && !botState.foundGroups.includes(group)) {
+              botState.foundGroups.push(group);
+              logDebug(`📍 Найдена группа: ${group}`);
+            }
+          }
+        }
+
+        // Парсим команды от доната: !command аргумент
+        const commandMatch = message.match(/^<([^>]+)>\s*!(\w+)\s*(.*)/);
+        if (commandMatch) {
+          const playerName = commandMatch[1];
+          const commandName = commandMatch[2].toLowerCase();
+          const args = commandMatch[3].trim();
+
+          handlePlayerCommand(playerName, commandName, args);
+        }
+
+      } catch (error) {
+        logError(`Ошибка обработки сообщения: ${error.message}`);
+      }
+    });
+
+    // ========== ОШИБКИ ==========
+    bot.on('error', (err) => {
+      logError(`Ошибка MC: ${err.message}`);
+    });
+
+    bot.on('end', () => {
+      logWarn('Соединение с сервером разорвано');
+
+      if (reconnectAttempts < MAX_RECONNECT) {
+        reconnectAttempts++;
+        const delay = Math.min(5000 * reconnectAttempts, 120000);
+        logWarn(`🔄 Переподключение ${reconnectAttempts}/${MAX_RECONNECT} через ${delay}мс`);
+
+        setTimeout(createMCBot, delay);
+
+        tgBot.telegram.sendMessage(
+          config.tg.adminId,
+          `⚠️ Попытка переподключения ${reconnectAttempts}/${MAX_RECONNECT}`,
+          { parse_mode: 'HTML' }
+        ).catch(err => logError(`Ошибка: ${err.message}`));
+      } else {
+        logError('КРИТИЧЕСКАЯ ОШИБКА: Максимум попыток достигнут!');
+        tgBot.telegram.sendMessage(
+          config.tg.adminId,
+          '🚨 <b>КРИТИЧЕСКАЯ ОШИБКА</b>\nБот не может переподключиться к серверу!\n\nПроверь:\n• Aternos запущен\n• Правильный адрес сервера\n• Интернет соединение',
+          { parse_mode: 'HTML' }
+        ).catch(err => logError(`Ошибка: ${err.message}`));
+      }
+    });
+
+  } catch (error) {
+    logError(`Критическая ошибка при создании бота: ${error.message}`);
+    setTimeout(createMCBot, 30000);
+  }
+}
+
+// ======================== ОБРАБОТКА КОМАНД ИГРОКОВ ========================
+function handlePlayerCommand(playerName, command, args) {
+  const donator = db.getDonator(playerName);
+
+  // Только доны могут писать команды
+  if (!donator) {
+    bot.chat(`❌ ${playerName}, команды доступны только донатерам!`);
+    logWarn(`${playerName} пытался использовать команду без доната`);
+    return;
+  }
+
+  // Проверяем кулдаун
+  if (db.isOnCooldown(playerName)) {
+    const timeLeft = Math.ceil(db.getCooldownTimeLeft(playerName) / 1000);
+    const minutes = Math.floor(timeLeft / 60);
+    const seconds = timeLeft % 60;
+    bot.chat(`⏱️ ${playerName}, подождите ${minutes}м ${seconds}с перед следующей командой!`);
+    logWarn(`${playerName} на кулдауне: осталось ${timeLeft}с`);
+    return;
+  }
+
+  // Команды в зависимости от ранга
+  const commands = {
+    vip: ['give', 'heal'],
+    premium: ['give', 'heal', 'tpall'],
+    diamond: ['give', 'heal', 'tpall', 'gamemode', 'effect']
+  };
+
+  const allowedCommands = commands[donator.rank.toLowerCase()] || [];
+
+  if (!allowedCommands.includes(command)) {
+    bot.chat(`❌ ${playerName}, команда !${command} недоступна для вашего ранга`);
+    logWarn(`${playerName} (${donator.rank}) попытался использовать !${command}`);
+    return;
+  }
+
+  // Выполнение команд
+  executeCommand(playerName, command, args, donator.rank);
+  
+  // Установка кулдауна
+  db.setCooldown(playerName, 300000); // 5 минут
+  db.data.stats.totalCommands++;
+  db.save();
+
+  logInfo(`Команда выполнена: ${playerName} - !${command}`);
+}
+
+function executeCommand(playerName, command, args, rank) {
+  switch (command) {
+    case 'give':
+      if (!args) {
+        bot.chat(`❌ ${playerName}, используй: !give [предмет] [количество]`);
+        return;
+      }
+      const [item, amount = 1] = args.split(' ');
+      bot.chat(`/give ${playerName} ${item} ${amount}`);
+      bot.chat(`✅ ${playerName}, выдано: ${item}x${amount}`);
+      break;
+
+    case 'heal':
+      bot.chat(`/effect give ${playerName} minecraft:instant_health 1 10`);
+      bot.chat(`💚 ${playerName}, ты исцелен!`);
+      break;
+
+    case 'tpall':
+      if (rank !== 'PREMIUM' && rank !== 'DIAMOND') {
+        bot.chat(`❌ ${playerName}, команда только для PREMIUM+`);
+        return;
+      }
+      bot.chat(`/execute as @a at ${playerName} run teleport @s ~ ~ ~`);
+      bot.chat(`🌍 ${playerName}, все телепортированы к тебе!`);
+      break;
+
+    case 'gamemode':
+      if (rank !== 'DIAMOND') {
+        bot.chat(`❌ ${playerName}, команда только для DIAMOND`);
+        return;
+      }
+      const mode = args || 'creative';
+      bot.chat(`/gamemode ${mode} ${playerName}`);
+      bot.chat(`🎮 ${playerName}, режим: ${mode}`);
+      break;
+
+    case 'effect':
+      if (rank !== 'DIAMOND') {
+        bot.chat(`❌ ${playerName}, команда только для DIAMOND`);
+        return;
+      }
+      if (!args) {
+        bot.chat(`❌ ${playerName}, используй: !effect [эффект] [уровень]`);
+        return;
+      }
+      const [effect, level = 1] = args.split(' ');
+      bot.chat(`/effect give ${playerName} ${effect} 300 ${level}`);
+      bot.chat(`✨ ${playerName}, применен эффект: ${effect}`);
+      break;
+
+    default:
+      bot.chat(`❌ ${playerName}, неизвестная команда`);
+  }
+}
+
+// ======================== STATE ========================
+const botState = {
+  pendingPlayer: '',
+  isCapturingGroups: false,
+  foundGroups: []
+};
+
+// ======================== EXPRESS СЕРВЕР ========================
 const app = express();
-const port = config.server.port;
+
+app.use(express.json());
 
 app.get('/', (req, res) => {
   res.status(200).json({
-    status: '✅ Система VoyagersSpace активна',
+    status: '✅ VoyagersSpace Bot активен',
     timestamp: new Date().toISOString(),
     botConnected: !!bot?.entity,
-    version: '2.0.0'
+    serverOnline: serverChecker.isOnline,
+    version: '3.0.0',
+    stats: db.data.stats
   });
 });
 
@@ -74,153 +436,39 @@ app.get('/health', (req, res) => {
   const health = {
     status: bot?.entity ? 'healthy' : 'initializing',
     botOnline: !!bot?.entity,
+    serverOnline: serverChecker.isOnline,
     uptime: process.uptime()
   };
-  res.status(bot?.entity ? 200 : 503).json(health);
+
+  const statusCode = bot?.entity && serverChecker.isOnline ? 200 : 503;
+  res.status(statusCode).json(health);
 });
 
-app.listen(port, () => {
-  logger.info(`🌐 Express сервер запущен на порту ${port}`);
+app.get('/stats', (req, res) => {
+  if (!bot?.entity) {
+    return res.status(503).json({ error: 'Bot не подключен' });
+  }
+
+  res.json({
+    botUsername: bot.username,
+    playersOnline: Object.keys(bot.players).length,
+    players: Object.values(bot.players).map(p => ({
+      username: p.username,
+      isDonator: !!db.getDonator(p.username)
+    })),
+    serverStatus: serverChecker.isOnline ? 'ONLINE' : 'OFFLINE',
+    stats: db.data.stats,
+    donators: db.data.donators
+  });
 });
 
-// Telegram Bot
-const tgBot = new Telegraf(config.tg.token);
-let bot;
-let reconnectAttempts = 0;
-const MAX_RECONNECT_ATTEMPTS = 10;
+app.listen(config.server.port, '0.0.0.0', () => {
+  logInfo(`🌐 Express сервер запущен на ${config.server.port}`);
+});
 
-// Bot state management
-const botState = {
-  pendingPlayer: '',
-  isCapturingGroups: false,
-  foundGroups: [],
-  lastGroupListTime: 0,
-  commandCooldown: new Map(),
-  activeSessions: new Map()
-};
-
-// Helper: Check if user is admin
+// ======================== TELEGRAM КОМАНДЫ ========================
 const isAdmin = (userId) => userId === config.tg.adminId;
 
-// Helper: Cooldown check
-const checkCooldown = (userId, command, cooldownMs = 3000) => {
-  const key = `${userId}:${command}`;
-  const now = Date.now();
-  const lastRun = botState.commandCooldown.get(key) || 0;
-
-  if (now - lastRun < cooldownMs) {
-    return false;
-  }
-  botState.commandCooldown.set(key, now);
-  return true;
-};
-
-// Create Minecraft Bot with enhanced error handling
-function createMCBot() {
-  try {
-    logger.info('🔌 Подключение к Minecraft серверу...');
-
-    bot = mineflayer.createBot({
-      host: config.mc.host,
-      port: config.mc.port,
-      username: config.mc.username,
-      version: config.mc.version,
-      auth: 'offline'
-    });
-
-    bot.on('spawn', () => {
-      logger.info('✅ Бот успешно зашел на сервер!');
-      reconnectAttempts = 0;
-      
-      setTimeout(() => {
-        bot.chat('🤖 Система VoyagersSpace подключена и готова к работе!');
-      }, 2000);
-
-      tgBot.telegram.sendMessage(
-        config.tg.adminId,
-        '✅ <b>Бот подключился к серверу</b>\n\nСистема готова к управлению донатами.',
-        { parse_mode: 'HTML' }
-      ).catch(err => logger.error('Ошибка отправки уведомления:', err));
-    });
-
-    bot.on('playerJoined', (player) => {
-      if (player.username === bot.username) return;
-
-      logger.info(`👤 Игрок ${player.username} присоединился`);
-      bot.chat(`👋 Привет, <c>${player.username}</c>! Добро пожаловать на VoyagersSpace!`);
-
-      tgBot.telegram.sendMessage(
-        config.tg.adminId,
-        `🚀 <b>Игрок присоединился</b>\n<code>${player.username}</code>\n\nОнлайн: ${Object.keys(bot.players).length} игроков`,
-        { parse_mode: 'HTML' }
-      ).catch(err => logger.error('Ошибка уведомления:', err));
-    });
-
-    bot.on('playerLeft', (player) => {
-      logger.info(`👤 Игрок ${player.username} вышел`);
-      tgBot.telegram.sendMessage(
-        config.tg.adminId,
-        `🚪 <b>Игрок вышел</b>\n<code>${player.username}</code>`,
-        { parse_mode: 'HTML' }
-      ).catch(err => logger.error('Ошибка уведомления:', err));
-    });
-
-    bot.on('message', (jsonMsg) => {
-      const message = jsonMsg.toString();
-
-      if (botState.isCapturingGroups) {
-        const match = message.match(/-\s*([a-zA-Z0-9_]+)/);
-        if (match && match[1]) {
-          const group = match[1];
-          const ignoreList = ['lp', 'luckperms', 'groups', 'info', 'usage', 'default', 'error', 'players'];
-          
-          if (!ignoreList.includes(group.toLowerCase()) && !botState.foundGroups.includes(group)) {
-            botState.foundGroups.push(group);
-            logger.debug(`📍 Найдена группа: ${group}`);
-          }
-        }
-      }
-    });
-
-    bot.on('error', (err) => {
-      logger.error(`⚠️ Ошибка Minecraft: ${err.message}`);
-    });
-
-    bot.on('end', () => {
-      logger.warn('❌ Соединение с сервером разорвано');
-      
-      if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
-        reconnectAttempts++;
-        const delay = Math.min(10000 * reconnectAttempts, 60000);
-        logger.info(`🔄 Переподключение попытка ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS} через ${delay}мс`);
-        
-        setTimeout(createMCBot, delay);
-        
-        tgBot.telegram.sendMessage(
-          config.tg.adminId,
-          `⚠️ <b>Бот отключился</b>\nПереподключение попытка ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS}`,
-          { parse_mode: 'HTML' }
-        ).catch(err => logger.error('Ошибка уведомления:', err));
-      } else {
-        logger.error('❌ Максимальное количество попыток переподключения достигнуто');
-        tgBot.telegram.sendMessage(
-          config.tg.adminId,
-          '❌ <b>Критическая ошибка</b>\nНе удается переподключиться к серверу. Проверь конфигурацию.',
-          { parse_mode: 'HTML' }
-        ).catch(err => logger.error('Ошибка уведомления:', err));
-      }
-    });
-
-  } catch (error) {
-    logger.error(`❌ Критическая ошибка при создании бота: ${error.message}`);
-    setTimeout(createMCBot, 30000);
-  }
-}
-
-// Initialize MC Bot
-createMCBot();
-
-// Telegram Bot Commands
 tgBot.start(ctx => {
   if (!isAdmin(ctx.from.id)) {
     return ctx.reply('❌ Доступ запрещен');
@@ -228,12 +476,14 @@ tgBot.start(ctx => {
 
   ctx.reply(
     '👋 <b>Привет, Асадбек!</b>\n\n' +
-    '🤖 Бот на связи с Aternos\n\n' +
-    '<b>Команды:</b>\n' +
-    '/status - Статус бота\n' +
-    '/players - Список игроков\n' +
-    '/help - Справка\n\n' +
-    '📝 Введи никнейм игрока для выдачи донат-ранга',
+    '🤖 <b>VoyagersSpace Bot v3.0</b>\n\n' +
+    '<b>📋 Команды:</b>\n' +
+    '  /status - Статус бота\n' +
+    '  /players - Список игроков\n' +
+    '  /donators - Список донатов\n' +
+    '  /stats - Статистика\n' +
+    '  /help - Справка\n\n' +
+    '🎁 Введи ник игрока для выдачи доната',
     { parse_mode: 'HTML' }
   );
 });
@@ -241,14 +491,16 @@ tgBot.start(ctx => {
 tgBot.command('status', ctx => {
   if (!isAdmin(ctx.from.id)) return ctx.reply('❌ Доступ запрещен');
 
-  const status = bot?.entity ? '✅ Онлайн' : '❌ Оффлайн';
+  const botStatus = bot?.entity ? '✅ Онлайн' : '❌ Оффлайн';
+  const serverStatus = serverChecker.isOnline ? '✅ Онлайн' : '❌ Оффлайн';
   const playerCount = bot?.entity ? Object.keys(bot.players).length : 0;
 
   ctx.reply(
-    `<b>📊 Статус бота</b>\n\n` +
-    `Статус: ${status}\n` +
-    `Игроков онлайн: ${playerCount}\n` +
-    `Версия: ${config.mc.version}\n` +
+    `<b>📊 Статус системы</b>\n\n` +
+    `БОТ: ${botStatus}\n` +
+    `СЕРВЕР: ${serverStatus}\n` +
+    `Игроков: ${playerCount}\n` +
+    `Версия MC: ${config.mc.version}\n` +
     `Хост: ${config.mc.host}:${config.mc.port}`,
     { parse_mode: 'HTML' }
   );
@@ -258,14 +510,49 @@ tgBot.command('players', ctx => {
   if (!isAdmin(ctx.from.id)) return ctx.reply('❌ Доступ запрещен');
 
   if (!bot?.entity) {
-    return ctx.reply('❌ Бот не подключен к серверу');
+    return ctx.reply('❌ Бот не подключен');
   }
 
-  const players = Object.values(bot.players).map(p => `• ${p.username}`).join('\n');
-  const playerList = players || 'Сервер пуст';
+  const players = Object.values(bot.players)
+    .map(p => {
+      const donator = db.getDonator(p.username);
+      return `• ${p.username}${donator ? ` [${donator.rank}]` : ''}`;
+    })
+    .join('\n') || 'Сервер пуст';
 
   ctx.reply(
-    `<b>👥 Игроки онлайн (${Object.keys(bot.players).length})</b>\n\n${playerList}`,
+    `<b>👥 Игроки онлайн (${Object.keys(bot.players).length})</b>\n\n${players}`,
+    { parse_mode: 'HTML' }
+  );
+});
+
+tgBot.command('donators', ctx => {
+  if (!isAdmin(ctx.from.id)) return ctx.reply('❌ Доступ запрещен');
+
+  if (Object.keys(db.data.donators).length === 0) {
+    return ctx.reply('❌ Донатов еще нет');
+  }
+
+  const donatorList = Object.entries(db.data.donators)
+    .map(([username, info]) => `• ${username} - <b>${info.rank}</b>`)
+    .join('\n');
+
+  ctx.reply(
+    `<b>🎁 Список донатов</b>\n\n${donatorList}`,
+    { parse_mode: 'HTML' }
+  );
+});
+
+tgBot.command('stats', ctx => {
+  if (!isAdmin(ctx.from.id)) return ctx.reply('❌ Доступ запрещен');
+
+  const stats = db.data.stats;
+
+  ctx.reply(
+    `<b>📈 Статистика</b>\n\n` +
+    `Всего команд: ${stats.totalCommands}\n` +
+    `Всего донатов: ${stats.totalDonats}\n` +
+    `Активных игроков: ${Object.keys(bot?.players || {}).length}`,
     { parse_mode: 'HTML' }
   );
 });
@@ -275,133 +562,120 @@ tgBot.command('help', ctx => {
 
   ctx.reply(
     `<b>📖 Справка</b>\n\n` +
-    `<b>Команды:</b>\n` +
-    `/status - Статус бота и сервера\n` +
-    `/players - Список игроков\n` +
-    `/help - Эта справка\n\n` +
-    `<b>Выдача рангов:</b>\n` +
-    `Просто введи никнейм игрока и выбери донат-ранг из списка`,
+    `<b>Команды боту в чате:</b>\n` +
+    `!give [предмет] [кол-во] - Выдать предмет\n` +
+    `!heal - Исцелить\n` +
+    `!tpall - Телепортировать всех (PREMIUM+)\n` +
+    `!gamemode [mode] - Сменить режим (DIAMOND)\n` +
+    `!effect [эффект] [уровень] - Применить эффект (DIAMOND)\n\n` +
+    `<b>Ограничения:</b>\n` +
+    `⏱️ 1 команда в 5 минут на игрока\n` +
+    `🎁 Только для донатов`,
     { parse_mode: 'HTML' }
   );
 });
 
-// Text handler for player nicknames
 tgBot.on('text', async ctx => {
   if (!isAdmin(ctx.from.id)) return ctx.reply('❌ Доступ запрещен');
-
-  if (!checkCooldown(ctx.from.id, 'text_input', 2000)) {
-    return ctx.reply('⏱️ Подождите перед следующей командой');
-  }
 
   const playerName = ctx.message.text.trim();
 
   if (playerName.length < 2 || playerName.length > 16) {
-    return ctx.reply('❌ Никнейм должен быть от 2 до 16 символов');
+    return ctx.reply('❌ Ник: 2-16 символов');
   }
 
   if (!bot?.entity) {
-    return ctx.reply('❌ Бот не подключен к серверу. Подожди переподключения...');
+    return ctx.reply('❌ Бот оффлайн');
   }
 
   botState.pendingPlayer = playerName;
   botState.foundGroups = [];
   botState.isCapturingGroups = true;
-  botState.lastGroupListTime = Date.now();
 
-  try {
-    await ctx.reply(`🔎 <b>Сканирую группы для:</b> <code>${playerName}</code>`, {
-      parse_mode: 'HTML'
-    });
+  await ctx.reply(`🔎 Сканирую группы для <code>${playerName}</code>`, {
+    parse_mode: 'HTML'
+  });
 
-    bot.chat('/lp listgroups');
+  bot.chat('/lp listgroups');
 
-    // Wait for groups to be captured
-    setTimeout(() => {
-      botState.isCapturingGroups = false;
+  setTimeout(() => {
+    botState.isCapturingGroups = false;
 
-      if (botState.foundGroups.length === 0) {
-        return ctx.reply(
-          '❌ <b>Группы не найдены</b>\n\n' +
-          'Убедись что:\n' +
-          '• Бот имеет права OP\n' +
-          '• LuckPerms установлен на сервере\n' +
-          '• Группы созданы',
-          { parse_mode: 'HTML' }
-        );
-      }
+    if (botState.foundGroups.length === 0) {
+      return ctx.reply('❌ Группы не найдены', { parse_mode: 'HTML' });
+    }
 
-      const buttons = botState.foundGroups.map(g => [
-        Markup.button.callback(`🎁 ${g}`, `set_${g}`)
-      ]);
+    const buttons = botState.foundGroups.map(g => [
+      Markup.button.callback(`🎁 ${g}`, `set_${g}`)
+    ]);
 
-      ctx.reply(
-        `<b>📋 Донат-ранги для ${playerName}:</b>`,
-        Markup.inlineKeyboard(buttons)
-      ).catch(err => logger.error('Ошибка отправки кнопок:', err));
-
-    }, 3000);
-
-  } catch (error) {
-    logger.error(`Ошибка при обработке никнейма: ${error.message}`);
-    ctx.reply('❌ Ошибка при обработке команды');
-  }
+    ctx.reply(
+      `<b>📋 Ранги для ${playerName}</b>`,
+      Markup.inlineKeyboard(buttons)
+    );
+  }, 3000);
 });
 
-// Handle rank selection
 tgBot.action(/set_(.+)/, async ctx => {
   if (!isAdmin(ctx.from.id)) return ctx.answerCbQuery('❌ Доступ запрещен');
-
-  if (!checkCooldown(ctx.from.id, `set_${ctx.match[1]}`, 2000)) {
-    return ctx.answerCbQuery('⏱️ Подождите перед следующей выдачей', true);
-  }
 
   const rank = ctx.match[1];
 
   if (!bot?.entity) {
-    return ctx.reply('❌ Ошибка: бот не в сети');
+    return ctx.reply('❌ Бот оффлайн');
   }
 
-  try {
-    bot.chat(`/lp user ${botState.pendingPlayer} parent set ${rank}`);
-    
-    logger.info(`✅ Ранг ${rank} выдан игроку ${botState.pendingPlayer}`);
+  bot.chat(`/lp user ${botState.pendingPlayer} parent set ${rank}`);
+  db.addDonator(botState.pendingPlayer, rank);
 
-    ctx.answerCbQuery('✅ Команда отправлена', true);
-    ctx.editMessageText(
-      `✅ <b>Успешно!</b>\n\n` +
-      `Игрок: <code>${botState.pendingPlayer}</code>\n` +
-      `Ранг: <code>${rank}</code>\n\n` +
-      `Изменения применены на сервере`,
-      { parse_mode: 'HTML' }
-    ).catch(err => logger.error('Ошибка редактирования:', err));
-
-    tgBot.telegram.sendMessage(
-      config.tg.adminId,
-      `🎁 <b>Ранг выдан</b>\n` +
-      `Игрок: <code>${botState.pendingPlayer}</code>\n` +
-      `Ранг: <code>${rank}</code>`,
-      { parse_mode: 'HTML' }
-    ).catch(err => logger.error('Ошибка уведомления:', err));
-
-  } catch (error) {
-    logger.error(`Ошибка при выдаче ранга: ${error.message}`);
-    ctx.reply('❌ Ошибка при выдаче ранга');
-  }
+  ctx.answerCbQuery('✅ Отправлено', true);
+  ctx.editMessageText(
+    `✅ <b>Успешно!</b>\n` +
+    `Игрок: <code>${botState.pendingPlayer}</code>\n` +
+    `Ранг: <code>${rank}</code>`,
+    { parse_mode: 'HTML' }
+  );
 });
 
-// Error handling
 tgBot.catch(err => {
-  logger.error('🚨 Ошибка Telegram бота:', err);
+  logError(`Ошибка Telegram: ${err.message}`);
 });
 
+// ======================== ПРОЦЕССЫ ========================
 process.on('unhandledRejection', err => {
-  logger.error('⚠️ Необработанное отклонение:', err);
+  logError(`Необработанное отклонение: ${err.message}`);
 });
 
-process.on('SIGINT', () => {
-  logger.info('🛑 Бот завершает работу...');
+process.on('SIGTERM', () => {
+  logWarn('Graceful shutdown...');
   bot?.end();
   process.exit(0);
 });
 
-logger.info('🚀 VoyagersSpace Bot v2.0.0 запущен!');
+// ======================== ИНИЦИАЛИЗАЦИЯ ========================
+async function initialize() {
+  logInfo('🚀 Инициализация VoyagersSpace Bot v3.0');
+  
+  // Проверяем сервер каждые 30 секунд
+  setInterval(async () => {
+    await serverChecker.updateStatus();
+    if (serverChecker.isOnline && !bot?.entity) {
+      logInfo('Сервер онлайн, пытаюсь подключиться...');
+      createMCBot();
+    }
+  }, 30000);
+
+  // Первая проверка
+  await serverChecker.updateStatus();
+  
+  if (serverChecker.isOnline) {
+    createMCBot();
+  } else {
+    logWarn('⏰ Сервер оффлайн, жду онлайна...');
+  }
+
+  tgBot.launch();
+  logInfo('✅ Telegram бот запущен');
+}
+
+initialize();
