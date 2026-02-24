@@ -13,7 +13,7 @@ app.listen(port);
 const tgBot = new Telegraf(TG_TOKEN);
 
 const bot = mineflayer.createBot({
-    host: '51.15.238.21', 
+    host: 'voyagersspace.aternos.me', 
     port: 11989,
     username: 'Asadbek_Manager',
     version: '1.20.1'
