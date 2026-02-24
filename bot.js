@@ -485,7 +485,7 @@ function executeCommand(playerName, command, args, rank) {
   const isAdmin = rank === 'ADMIN';
 
   switch (command) {
-    // ОБЫЧНЫЕ КОМАНДЫ
+    // ======================== ОБЫЧНЫЕ КОМАНДЫ ========================
     case 'give':
       if (!args) {
         bot.chat(`❌ ${playerName}, используй: !give [предмет] [кол-во]`);
@@ -533,7 +533,175 @@ function executeCommand(playerName, command, args, rank) {
       bot.chat(`⚡ ${playerName}, скорость повышена!`);
       break;
 
-    // АДМИН КОМАНДЫ
+    // ======================== ESSENTIALSX КОМАНДЫ ========================
+    case 'home':
+      bot.chat(`/home ${playerName}`);
+      bot.chat(`🏠 ${playerName}, телепортировано домой!`);
+      break;
+
+    case 'sethome':
+      bot.chat(`/sethome ${playerName}`);
+      bot.chat(`🏠 ${playerName}, дом установлен!`);
+      break;
+
+    case 'spawn':
+      bot.chat(`/spawn ${playerName}`);
+      bot.chat(`🌍 ${playerName}, телепортировано на спавн!`);
+      break;
+
+    case 'back':
+      bot.chat(`/back ${playerName}`);
+      bot.chat(`⬅️ ${playerName}, вернулся на предыдущее место!`);
+      break;
+
+    case 'warp':
+      if (!args) {
+        bot.chat(`❌ ${playerName}, используй: !warp [название]`);
+        return;
+      }
+      bot.chat(`/warp ${args} ${playerName}`);
+      bot.chat(`🗺️ ${playerName}, телепортировано на варп!`);
+      break;
+
+    case 'setwarp':
+      if (!isAdmin) {
+        bot.chat(`❌ ${playerName}, эта команда только для ВЛАДЕЛЬЦА!`);
+        return;
+      }
+      if (!args) {
+        bot.chat(`❌ ${playerName}, используй: !setwarp [название]`);
+        return;
+      }
+      bot.chat(`/setwarp ${args}`);
+      bot.chat(`🗺️ Варп '${args}' установлен!`);
+      break;
+
+    case 'delwarp':
+      if (!isAdmin) {
+        bot.chat(`❌ ${playerName}, эта команда только для ВЛАДЕЛЬЦА!`);
+        return;
+      }
+      if (!args) {
+        bot.chat(`❌ ${playerName}, используй: !delwarp [название]`);
+        return;
+      }
+      bot.chat(`/delwarp ${args}`);
+      bot.chat(`🗑️ Варп '${args}' удален!`);
+      break;
+
+    case 'warps':
+      bot.chat(`/warps`);
+      bot.chat(`📋 ${playerName}, список варпов выше!`);
+      break;
+
+    case 'tpa':
+      if (!args) {
+        bot.chat(`❌ ${playerName}, используй: !tpa [игрок]`);
+        return;
+      }
+      bot.chat(`/tpa ${playerName} ${args}`);
+      bot.chat(`📨 ${playerName}, запрос на телепортацию отправлен!`);
+      break;
+
+    case 'tpaccept':
+      bot.chat(`/tpaccept ${playerName}`);
+      bot.chat(`✅ ${playerName}, телепортация принята!`);
+      break;
+
+    case 'tpdeny':
+      bot.chat(`/tpdeny ${playerName}`);
+      bot.chat(`❌ ${playerName}, телепортация отклонена!`);
+      break;
+
+    case 'msg':
+      if (!args) {
+        bot.chat(`❌ ${playerName}, используй: !msg [игрок] [сообщение]`);
+        return;
+      }
+      const msgArgs = args.split(' ');
+      const targetPlayer = msgArgs[0];
+      const message = msgArgs.slice(1).join(' ');
+      bot.chat(`/msg ${playerName} ${targetPlayer} ${message}`);
+      bot.chat(`💬 ${playerName}, сообщение отправлено ${targetPlayer}!`);
+      break;
+
+    case 'mail':
+      if (!args) {
+        bot.chat(`❌ ${playerName}, используй: !mail [игрок] [сообщение]`);
+        return;
+      }
+      const mailArgs = args.split(' ');
+      const mailTarget = mailArgs[0];
+      const mailMsg = mailArgs.slice(1).join(' ');
+      bot.chat(`/mail send ${mailTarget} ${mailMsg}`);
+      bot.chat(`📬 ${playerName}, письмо отправлено ${mailTarget}!`);
+      break;
+
+    case 'mailread':
+      bot.chat(`/mail read`);
+      bot.chat(`📬 ${playerName}, читай свои письма!`);
+      break;
+
+    case 'seen':
+      if (!args) {
+        bot.chat(`❌ ${playerName}, используй: !seen [игрок]`);
+        return;
+      }
+      bot.chat(`/seen ${args}`);
+      bot.chat(`👁️ ${playerName}, информация выше!`);
+      break;
+
+    case 'afk':
+      bot.chat(`/afk`);
+      bot.chat(`💤 ${playerName}, теперь AFK!`);
+      break;
+
+    case 'kit':
+      if (!args) {
+        bot.chat(`❌ ${playerName}, используй: !kit [название]`);
+        return;
+      }
+      bot.chat(`/kit ${args} ${playerName}`);
+      bot.chat(`📦 ${playerName}, кит '${args}' выдан!`);
+      break;
+
+    case 'kits':
+      bot.chat(`/kits`);
+      bot.chat(`📋 ${playerName}, список китов выше!`);
+      break;
+
+    case 'setkit':
+      if (!isAdmin) {
+        bot.chat(`❌ ${playerName}, эта команда только для ВЛАДЕЛЬЦА!`);
+        return;
+      }
+      if (!args) {
+        bot.chat(`❌ ${playerName}, используй: !setkit [название]`);
+        return;
+      }
+      bot.chat(`/kit set ${args}`);
+      bot.chat(`📦 Кит '${args}' установлен!`);
+      break;
+
+    case 'signs':
+      bot.chat(`/signs`);
+      bot.chat(`📝 ${playerName}, список вывесок выше!`);
+      break;
+
+    case 'tp':
+      if (!isAdmin) {
+        bot.chat(`❌ ${playerName}, эта команда только для ВЛАДЕЛЬЦА!`);
+        return;
+      }
+      if (!args) {
+        bot.chat(`❌ ${playerName}, используй: !tp [игрок]`);
+        return;
+      }
+      bot.chat(`/tp ${args}`);
+      bot.chat(`🚀 Телепортировано к ${args}!`);
+      break;
+
+    // ======================== АДМИН КОМАНДЫ ========================
     case 'say':
       if (!isAdmin) {
         bot.chat(`❌ ${playerName}, эта команда только для ВЛАДЕЛЬЦА!`);
@@ -544,6 +712,19 @@ function executeCommand(playerName, command, args, rank) {
         return;
       }
       bot.chat(args);
+      break;
+
+    case 'broadcast':
+      if (!isAdmin) {
+        bot.chat(`❌ ${playerName}, эта команда только для ВЛАДЕЛЬЦА!`);
+        return;
+      }
+      if (!args) {
+        bot.chat(`❌ ${playerName}, используй: !broadcast [сообщение]`);
+        return;
+      }
+      bot.chat(`/say §c§l[ОБЪЯВЛЕНИЕ]§r §6${args}`);
+      logInfo(`📢 Объявление: ${args}`);
       break;
 
     case 'clear':
@@ -575,24 +756,95 @@ function executeCommand(playerName, command, args, rank) {
       bot.chat(`⏰ ${playerName}, время установлено!`);
       break;
 
-    case 'broadcast':
+    case 'god':
       if (!isAdmin) {
         bot.chat(`❌ ${playerName}, эта команда только для ВЛАДЕЛЬЦА!`);
         return;
       }
       if (!args) {
-        bot.chat(`❌ ${playerName}, используй: !broadcast [сообщение]`);
+        bot.chat(`❌ ${playerName}, используй: !god [игрок]`);
         return;
       }
-      bot.chat(`§c§l[ОБЪЯВЛЕНИЕ]§r §6${args}`);
-      logInfo(`📢 Объявление: ${args}`);
+      bot.chat(`/god ${args}`);
+      bot.chat(`🛡️ ${args} получил режим бога!`);
+      break;
+
+    case 'invsee':
+      if (!isAdmin) {
+        bot.chat(`❌ ${playerName}, эта команда только для ВЛАДЕЛЬЦА!`);
+        return;
+      }
+      if (!args) {
+        bot.chat(`❌ ${playerName}, используй: !invsee [игрок]`);
+        return;
+      }
+      bot.chat(`/invsee ${args}`);
+      bot.chat(`👀 ${playerName} смотрит инвентарь ${args}!`);
+      break;
+
+    case 'enderchest':
+      bot.chat(`/enderchest ${playerName}`);
+      bot.chat(`📦 ${playerName}, открыт эндер чест!`);
+      break;
+
+    case 'workbench':
+      bot.chat(`/workbench ${playerName}`);
+      bot.chat(`🔨 ${playerName}, открыт верстак!`);
+      break;
+
+    case 'anvil':
+      bot.chat(`/anvil ${playerName}`);
+      bot.chat(`⚒️ ${playerName}, открыта наковальня!`);
+      break;
+
+    case 'heal-admin':
+      if (!isAdmin) {
+        bot.chat(`❌ ${playerName}, эта команда только для ВЛАДЕЛЬЦА!`);
+        return;
+      }
+      if (!args) {
+        bot.chat(`❌ ${playerName}, используй: !heal-admin [игрок]`);
+        return;
+      }
+      bot.chat(`/heal ${args}`);
+      bot.chat(`💚 ${args} исцелен!`);
+      break;
+
+    case 'feed':
+      bot.chat(`/feed ${playerName}`);
+      bot.chat(`🍗 ${playerName}, ты сыт!`);
+      break;
+
+    case 'mute':
+      if (!isAdmin) {
+        bot.chat(`❌ ${playerName}, эта команда только для ВЛАДЕЛЬЦА!`);
+        return;
+      }
+      if (!args) {
+        bot.chat(`❌ ${playerName}, используй: !mute [игрок]`);
+        return;
+      }
+      bot.chat(`/mute ${args}`);
+      bot.chat(`🔇 ${args} заморожен!`);
+      break;
+
+    case 'unmute':
+      if (!isAdmin) {
+        bot.chat(`❌ ${playerName}, эта команда только для ВЛАДЕЛЬЦА!`);
+        return;
+      }
+      if (!args) {
+        bot.chat(`❌ ${playerName}, используй: !unmute [игрок]`);
+        return;
+      }
+      bot.chat(`/unmute ${args}`);
+      bot.chat(`🔊 ${args} разморожен!`);
       break;
 
     default:
       bot.chat(`❌ ${playerName}, неизвестная команда !${command}`);
   }
 }
-
 // ======================== STATE ========================
 const botState = {
   pendingPlayer: '',
@@ -630,27 +882,57 @@ app.listen(config.server.port, '0.0.0.0', () => {
 // ======================== TELEGRAM КОМАНДЫ ========================
 const isAdmin = (userId) => userId === config.tg.adminId;
 
-tgBot.start(ctx => {
+tgBot.command('help', ctx => {
   if (!isAdmin(ctx.from.id)) return ctx.reply('❌ Доступ запрещен');
 
   ctx.reply(
-    '👋 <b>VoyagersSpace Bot v4.1</b>\n\n' +
-    '🔒 <b>Система защиты команд активна!</b>\n\n' +
-    '<b>📋 Основные команды:</b>\n' +
-    '/status - Статус\n' +
-    '/commands - Все команды\n' +
-    '/logs - Логи\n' +
-    '/stats - Статистика\n\n' +
-    '<b>🎁 Управление донатами:</b>\n' +
-    '/adddonator [ник] [ранг]\n' +
-    '/removedonator [ник]\n' +
-    '/donators - Список\n\n' +
-    '<b>👑 Администрирование:</b>\n' +
-    '/help - Полная справка',
+    `<b>📖 Справка VoyagersSpace Bot v4.1</b>\n\n` +
+    `<b>🎮 Обычные команды:</b>\n` +
+    `!give [предмет] [кол-во]\n` +
+    `!heal - Исцелить\n` +
+    `!tpall - Телепортировать всех\n` +
+    `!gamemode [режим]\n` +
+    `!effect [эффект] [уровень]\n` +
+    `!fly - Разрешить полёт\n` +
+    `!speed [уровень] - Скорость\n\n` +
+    `<b>🏠 EssentialsX команды:</b>\n` +
+    `!home - Домой\n` +
+    `!sethome - Установить дом\n` +
+    `!spawn - На спавн\n` +
+    `!back - Вернуться\n` +
+    `!warp [название] - Варп\n` +
+    `!warps - Список варпов\n` +
+    `!tpa [игрок] - Запрос телепортации\n` +
+    `!tpaccept - Принять ТП\n` +
+    `!tpdeny - Отклонить ТП\n` +
+    `!msg [игрок] [текст] - ЛС\n` +
+    `!mail [игрок] [текст] - Письмо\n` +
+    `!mailread - Читать письма\n` +
+    `!seen [игрок] - Когда был\n` +
+    `!afk - AFK режим\n` +
+    `!kit [название] - Получить кит\n` +
+    `!kits - Список китов\n` +
+    `!feed - Насытиться\n` +
+    `!enderchest - Эндер сундук\n` +
+    `!workbench - Верстак\n` +
+    `!anvil - Наковальня\n\n` +
+    `<b>👑 Админ команды (только voyagerplay):</b>\n` +
+    `!say [сообщение]\n` +
+    `!broadcast [сообщение]\n` +
+    `!setwarp [название]\n` +
+    `!delwarp [название]\n` +
+    `!setkit [название]\n` +
+    `!tp [игрок] - Телепортировать\n` +
+    `!god [игрок] - Режим бога\n` +
+    `!invsee [игрок] - Смотреть инвентарь\n` +
+    `!heal-admin [игрок]\n` +
+    `!mute [игрок] - Заморозить\n` +
+    `!unmute [игрок] - Разморозить\n` +
+    `!weather [тип]\n` +
+    `!time [время]`,
     { parse_mode: 'HTML' }
   );
 });
-
 tgBot.command('status', ctx => {
   if (!isAdmin(ctx.from.id)) return ctx.reply('❌ Доступ запрещен');
 
