@@ -2,68 +2,90 @@ const mineflayer = require('mineflayer');
 const { Telegraf, Markup } = require('telegraf');
 const express = require('express');
 
-// --- ТВОИ ДАННЫЕ ---
 const TG_TOKEN = '8403946776:AAGzARz2F2LlzBxmjcqZlq8ollRCUQg4A9c'; 
 const ADMIN_ID = 115408334; 
 
 const app = express();
 const port = process.env.PORT || 10000;
-app.get('/', (req, res) => res.send('Бот Асадбека на Render запущен!'));
-app.listen(port, () => console.log(`Веб-сервер активен на порту ${port}`));
+app.get('/', (req, res) => res.send('Бот VoyagersSpace активен!'));
+app.listen(port);
 
 const tgBot = new Telegraf(TG_TOKEN);
 
 const bot = mineflayer.createBot({
-    host: '51.15.238.21', // Твой новый IP
+    host: '51.15.238.21', 
     port: 11989,
     username: 'Asadbek_Manager',
     version: '1.20.1'
 });
 
-bot.on('spawn', () => {
-    console.log('✅ БОТ ЗАШЕЛ В МАЙНКРАФТ!');
-    bot.chat('Админ-панель через Telegram подключена.');
+// --- МОНИТОРИНГ ИГРОКОВ ---
+bot.on('playerJoined', (player) => {
+    if (player.username === bot.username) return; // Игнорируем самого себя
+
+    // Приветствие в чат игры
+    bot.chat(`Привет, ${player.username}! Добро пожаловать на сервер VoyagersSpace!`);
+
+    // Уведомление тебе в Telegram
+    tgBot.telegram.sendMessage(ADMIN_ID, `🚀 Игрок ${player.username} зашел на сервер!`);
 });
 
+// --- ЛОГИКА ГРУПП (ИСПРАВЛЕННАЯ) ---
 let pendingPlayer = ""; 
 let isCapturingGroups = false;
 let foundGroups = [];
 
 bot.on('message', (jsonMsg) => {
     const message = jsonMsg.toString();
-    if (isCapturingGroups && message.includes('- ')) { 
-        const group = message.replace('-', '').trim().split(' ')[0];
-        if (group && !foundGroups.includes(group)) foundGroups.push(group);
+    
+    if (isCapturingGroups) {
+        // Улучшенный поиск групп: ищем слова после дефиса или в списке
+        // LuckPerms обычно присылает список в формате " - имя_группы"
+        const match = message.match(/-\s*(\w+)/); 
+        if (match && match[1]) {
+            const group = match[1];
+            if (!foundGroups.includes(group) && group.toLowerCase() !== 'groups') {
+                foundGroups.push(group);
+            }
+        }
     }
 });
 
 tgBot.start(ctx => {
-    if (ctx.from.id == ADMIN_ID) ctx.reply('Привет, Асадбек! Введи ник игрока для выдачи доната.');
+    if (ctx.from.id == ADMIN_ID) ctx.reply('Система VoyagersSpace готова. Введи ник игрока.');
 });
 
 tgBot.on('text', async ctx => {
     if (ctx.from.id != ADMIN_ID) return;
+    
     pendingPlayer = ctx.message.text;
     foundGroups = [];
     isCapturingGroups = true;
-    ctx.reply(`Спрашиваю у сервера список донатов для ${pendingPlayer}...`);
+    
+    ctx.reply(`🔎 Запрашиваю список донатов для ${pendingPlayer}...`);
     bot.chat('/lp listgroups');
     
+    // Ждем чуть дольше (3 сек), чтобы собрать все группы
     setTimeout(() => {
         isCapturingGroups = false;
-        if (foundGroups.length == 0) return ctx.reply('Не удалось получить список групп. Проверь права бота (/op).');
-        const btns = foundGroups.map(g => [Markup.button.callback(`Выдать ${g}`, `set_${g}`)]);
-        ctx.reply(`Выбери донат для ${pendingPlayer}:`, Markup.inlineKeyboard(btns));
-    }, 2500);
+        
+        if (foundGroups.length == 0) {
+            return ctx.reply('Группы не найдены. Убедись, что у бота есть права OP, и попробуй еще раз.');
+        }
+
+        // Создаем кнопки: одна строка — одна кнопка
+        const buttons = foundGroups.map(g => [Markup.button.callback(`🎁 Выдать ${g}`, `set_${g}`)]);
+        
+        ctx.reply(`Список доступных групп:`, Markup.inlineKeyboard(buttons));
+    }, 3000);
 });
 
 tgBot.action(/set_(.+)/, ctx => {
     const rank = ctx.match[1];
     bot.chat(`/lp user ${pendingPlayer} parent set ${rank}`);
-    ctx.reply(`✅ Готово! Игроку ${pendingPlayer} установлен ранг ${rank}`);
+    ctx.reply(`✅ Игроку ${pendingPlayer} успешно выдан ранг: ${rank}`);
 });
 
-tgBot.launch().catch(err => console.error('Ошибка TG:', err.message));
-
-bot.on('error', err => console.log('Ошибка MC:', err.message));
-bot.on('kicked', reason => console.log('Кикнут с сервера:', reason));
+tgBot.launch();
+bot.on('spawn', () => console.log('✅ Бот в игре!'));
+bot.on('error', err => console.log('Ошибка:', err.message));
