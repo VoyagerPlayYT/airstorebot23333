@@ -2,9 +2,11 @@ FROM node:18-alpine
 
 WORKDIR /app
 
-# Копируем package.json и устанавливаем зависимости
+# Копируем package.json
 COPY package*.json ./
-RUN npm ci --only=production
+
+# Используем npm install вместо npm ci
+RUN npm install --omit=dev
 
 # Копируем весь код
 COPY . .
@@ -12,7 +14,7 @@ COPY . .
 # Создаем папку для логов
 RUN mkdir -p /app/logs
 
-# Переменные окружения по умолчанию
+# Переменные окружения
 ENV NODE_ENV=production
 ENV PORT=10000
 
