@@ -5,6 +5,7 @@ import dotenv from 'dotenv';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import net from 'net';
 
 dotenv.config();
 
@@ -305,8 +306,7 @@ class ServerChecker {
 
   async check() {
     return new Promise((resolve) => {
-      const socket = require('net').createConnection(this.port, this.host);
-      const timer = setTimeout(() => {
+const socket = net.createConnection(this.port, this.host);      const timer = setTimeout(() => {
         socket.destroy();
         resolve(false);
       }, this.timeout);
