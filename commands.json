@@ -1,0 +1,193 @@
+{
+  "allowedCommands": {
+    "give": {
+      "enabled": true,
+      "requiredRank": "VIP",
+      "cooldown": 300000,
+      "description": "Выдать предмет игроку",
+      "syntax": "!give [предмет] [количество]",
+      "dangerous": false
+    },
+    "heal": {
+      "enabled": true,
+      "requiredRank": "VIP",
+      "cooldown": 300000,
+      "description": "Исцелить игрока",
+      "syntax": "!heal",
+      "dangerous": false
+    },
+    "tpall": {
+      "enabled": true,
+      "requiredRank": "PREMIUM",
+      "cooldown": 600000,
+      "description": "Телепортировать всех к себе",
+      "syntax": "!tpall",
+      "dangerous": false
+    },
+    "gamemode": {
+      "enabled": true,
+      "requiredRank": "DIAMOND",
+      "cooldown": 300000,
+      "description": "Сменить режим игры",
+      "syntax": "!gamemode [режим]",
+      "dangerous": false
+    },
+    "effect": {
+      "enabled": true,
+      "requiredRank": "DIAMOND",
+      "cooldown": 300000,
+      "description": "Применить эффект",
+      "syntax": "!effect [эффект] [уровень]",
+      "dangerous": false
+    },
+    "fly": {
+      "enabled": true,
+      "requiredRank": "PREMIUM",
+      "cooldown": 300000,
+      "description": "Разрешить полёт",
+      "syntax": "!fly",
+      "dangerous": false
+    },
+    "speed": {
+      "enabled": true,
+      "requiredRank": "PREMIUM",
+      "cooldown": 300000,
+      "description": "Дать скорость",
+      "syntax": "!speed [уровень]",
+      "dangerous": false
+    }
+  },
+  "bannedCommands": {
+    "kill": {
+      "enabled": false,
+      "reason": "Опасная команда - убийство мобов/игроков",
+      "blocked": true,
+      "severity": "HIGH"
+    },
+    "stop": {
+      "enabled": false,
+      "reason": "Остановка сервера",
+      "blocked": true,
+      "severity": "CRITICAL"
+    },
+    "save-all": {
+      "enabled": false,
+      "reason": "Критическая команда",
+      "blocked": true,
+      "severity": "CRITICAL"
+    },
+    "reload": {
+      "enabled": false,
+      "reason": "Перезагрузка плагинов",
+      "blocked": true,
+      "severity": "HIGH"
+    },
+    "op": {
+      "enabled": false,
+      "reason": "Выдача прав OP",
+      "blocked": true,
+      "severity": "CRITICAL"
+    },
+    "deop": {
+      "enabled": false,
+      "reason": "Снятие прав OP",
+      "blocked": true,
+      "severity": "CRITICAL"
+    },
+    "ban": {
+      "enabled": false,
+      "reason": "Блокировка игроков",
+      "blocked": true,
+      "severity": "HIGH"
+    },
+    "unban": {
+      "enabled": false,
+      "reason": "Разблокировка игроков",
+      "blocked": true,
+      "severity": "HIGH"
+    },
+    "kick": {
+      "enabled": false,
+      "reason": "Выгон игроков",
+      "blocked": true,
+      "severity": "HIGH"
+    },
+    "teleport": {
+      "enabled": false,
+      "reason": "Телепортация (только через !tpall)",
+      "blocked": true,
+      "severity": "MEDIUM"
+    },
+    "execute": {
+      "enabled": false,
+      "reason": "Выполнение команд от имени игроков",
+      "blocked": true,
+      "severity": "CRITICAL"
+    },
+    "lp": {
+      "enabled": false,
+      "reason": "LuckPerms команды (только админ)",
+      "blocked": true,
+      "severity": "CRITICAL"
+    },
+    "creative": {
+      "enabled": false,
+      "reason": "Прямое включение креатива",
+      "blocked": true,
+      "severity": "HIGH"
+    },
+    "adventure": {
+      "enabled": false,
+      "reason": "Прямое включение приключений",
+      "blocked": true,
+      "severity": "HIGH"
+    },
+    "spectator": {
+      "enabled": false,
+      "reason": "Прямое включение спектатора",
+      "blocked": true,
+      "severity": "HIGH"
+    },
+    "summon": {
+      "enabled": false,
+      "reason": "Спавнинг сущностей",
+      "blocked": true,
+      "severity": "MEDIUM"
+    },
+    "setblock": {
+      "enabled": false,
+      "reason": "Установка блоков",
+      "blocked": true,
+      "severity": "MEDIUM"
+    },
+    "fill": {
+      "enabled": false,
+      "reason": "Заполнение области блоками",
+      "blocked": true,
+      "severity": "MEDIUM"
+    },
+    "clone": {
+      "enabled": false,
+      "reason": "Клонирование структур",
+      "blocked": true,
+      "severity": "MEDIUM"
+    }
+  },
+  "ranks": {
+    "VIP": {
+      "level": 1,
+      "color": "§a",
+      "permissions": ["give", "heal"]
+    },
+    "PREMIUM": {
+      "level": 2,
+      "color": "§b",
+      "permissions": ["give", "heal", "tpall", "fly", "speed"]
+    },
+    "DIAMOND": {
+      "level": 3,
+      "color": "§6",
+      "permissions": ["give", "heal", "tpall", "fly", "speed", "gamemode", "effect"]
+    }
+  }
+}
