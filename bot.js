@@ -25,7 +25,8 @@ const config = {
   },
   server: {
     port: parseInt(process.env.PORT) || 10000
-  }
+  },
+  gameAdmins: ['voyagerplay'] // ✅ ТВОЙ НИК КАК АДМИН
 };
 
 // ======================== ЛОГИРОВАНИЕ ========================
@@ -73,48 +74,28 @@ class CommandsManager {
     fs.writeFileSync(this.configPath, JSON.stringify(defaultConfig, null, 2));
   }
 
-  reloadCommands() {
-    this.config = this.loadCommands();
-    logInfo('Команды перезагружены');
-  }
-
-  saveCommands() {
-    try {
-      fs.writeFileSync(this.configPath, JSON.stringify(this.config, null, 2));
-      logInfo('Конфиг команд сохранен');
-    } catch (error) {
-      logError(`Ошибка сохранения commands.json: ${error.message}`);
-    }
-  }
-
-  // Проверить разрешена ли команда
   isCommandAllowed(commandName) {
     const cmd = this.config.allowedCommands[commandName.toLowerCase()];
     return cmd && cmd.enabled === true;
   }
 
-  // Проверить запрещена ли команда
   isCommandBanned(commandName) {
     const cmd = this.config.bannedCommands[commandName.toLowerCase()];
     return cmd && cmd.blocked === true;
   }
 
-  // Получить информацию о команде
   getCommandInfo(commandName) {
     return this.config.allowedCommands[commandName.toLowerCase()] || null;
   }
 
-  // Получить информацию о запрещённой команде
   getBannedCommandInfo(commandName) {
     return this.config.bannedCommands[commandName.toLowerCase()] || null;
   }
 
-  // Проверить уровень ранга
   getRankLevel(rank) {
     return this.config.ranks[rank]?.level || 0;
   }
 
-  // Проверить может ли ранг использовать команду
   canRankUseCommand(rank, command) {
     const cmdInfo = this.getCommandInfo(command);
     if (!cmdInfo) return false;
@@ -125,69 +106,10 @@ class CommandsManager {
     return playerRankLevel >= requiredRankLevel;
   }
 
-  // Включить команду
-  enableCommand(commandName) {
-    if (this.config.allowedCommands[commandName.toLowerCase()]) {
-      this.config.allowedCommands[commandName.toLowerCase()].enabled = true;
-      this.saveCommands();
-      return true;
-    }
-    return false;
-  }
-
-  // Отключить команду
-  disableCommand(commandName) {
-    if (this.config.allowedCommands[commandName.toLowerCase()]) {
-      this.config.allowedCommands[commandName.toLowerCase()].enabled = false;
-      this.saveCommands();
-      return true;
-    }
-    return false;
-  }
-
-  // Добавить новую команду
-  addCommand(name, config) {
-    this.config.allowedCommands[name.toLowerCase()] = {
-      enabled: true,
-      requiredRank: config.requiredRank || 'VIP',
-      cooldown: config.cooldown || 300000,
-      description: config.description || '',
-      syntax: config.syntax || '',
-      dangerous: config.dangerous || false
-    };
-    this.saveCommands();
-    logInfo(`Команда добавлена: ${name}`);
-  }
-
-  // Добавить в чёрный список
-  banCommand(name, reason, severity = 'MEDIUM') {
-    this.config.bannedCommands[name.toLowerCase()] = {
-      enabled: false,
-      reason: reason,
-      blocked: true,
-      severity: severity
-    };
-    this.saveCommands();
-    logSecurity(`Команда добавлена в чёрный список: ${name}`);
-  }
-
-  // Удалить из чёрного списка
-  unbanCommand(name) {
-    if (this.config.bannedCommands[name.toLowerCase()]) {
-      delete this.config.bannedCommands[name.toLowerCase()];
-      this.saveCommands();
-      logSecurity(`Команда удалена из чёрного списка: ${name}`);
-      return true;
-    }
-    return false;
-  }
-
-  // Получить список всех разрешённых команд
   getAllowedCommands() {
     return this.config.allowedCommands;
   }
 
-  // Получить список всех запрещённых команд
   getBannedCommands() {
     return this.config.bannedCommands;
   }
@@ -207,10 +129,28 @@ class Database {
       stats: {
         totalCommands: 0,
         totalDonats: 0,
-        blockedAttempts: 0
+        blockedAttempts: 0,
+        totalPlayers: 0
       }
     };
     this.load();
+    this.initializeDefaultAdmins();
+  }
+
+  initializeDefaultAdmins() {
+    // ✅ Добавляем админов автоматически
+    const admins = ['voyagerplay'];
+    admins.forEach(admin => {
+      if (!this.data.donators[admin]) {
+        this.data.donators[admin] = {
+          rank: 'ADMIN',
+          joinedAt: Date.now(),
+          isAdmin: true
+        };
+      }
+    });
+    this.save();
+    logInfo('✅ Админы инициализированы');
   }
 
   load() {
@@ -242,7 +182,6 @@ class Database {
       reason: reason
     });
 
-    // Оставляем последние 1000 логов
     if (this.data.logs.length > 1000) {
       this.data.logs = this.data.logs.slice(-1000);
     }
@@ -253,14 +192,21 @@ class Database {
   addDonator(username, rank) {
     this.data.donators[username] = {
       rank,
-      joinedAt: Date.now()
+      joinedAt: Date.now(),
+      isAdmin: false
     };
     this.data.stats.totalDonats++;
     this.save();
+    logInfo(`✅ Донат добавлен: ${username} - ${rank}`);
   }
 
   getDonator(username) {
     return this.data.donators[username] || null;
+  }
+
+  isPlayerAdmin(playerName) {
+    const player = this.getDonator(playerName);
+    return player && player.isAdmin === true;
   }
 
   setCooldown(username, cooldownMs = 300000) {
@@ -291,6 +237,19 @@ class Database {
     const timeLeft = cooldown.expiresAt - Date.now();
     return Math.max(0, timeLeft);
   }
+
+  removeDonator(username) {
+    if (this.data.donators[username]) {
+      delete this.data.donators[username];
+      this.save();
+      return true;
+    }
+    return false;
+  }
+
+  getAllDonators() {
+    return this.data.donators;
+  }
 }
 
 const db = new Database();
@@ -306,7 +265,8 @@ class ServerChecker {
 
   async check() {
     return new Promise((resolve) => {
-const socket = net.createConnection(this.port, this.host);      const timer = setTimeout(() => {
+      const socket = net.createConnection(this.port, this.host);
+      const timer = setTimeout(() => {
         socket.destroy();
         resolve(false);
       }, this.timeout);
@@ -372,12 +332,12 @@ function createMCBot() {
       reconnectAttempts = 0;
 
       setTimeout(() => {
-        bot.chat('🤖 VoyagersSpace система активирована!');
+        bot.chat('🤖 VoyagersSpace v4.0 активирована!');
       }, 2000);
 
       tgBot.telegram.sendMessage(
         config.tg.adminId,
-        '✅ <b>БОТ ПОДКЛЮЧЕН</b>\n\n🔒 Система защиты команд активна!',
+        '✅ <b>БОТ ПОДКЛЮЧЕН</b>\n\n🔒 Система защиты команд активна!\n🎮 Версия: v4.0',
         { parse_mode: 'HTML' }
       ).catch(err => logError(`Ошибка: ${err.message}`));
     });
@@ -387,9 +347,26 @@ function createMCBot() {
 
       logInfo(`👤 ${player.username} присоединился`);
       const donator = db.getDonator(player.username);
-      const rankText = donator ? ` (${donator.rank})` : '';
+      const isAdmin = db.isPlayerAdmin(player.username);
+      
+      let greeting = `👋 Добро пожаловать, ${player.username}!`;
+      if (isAdmin) {
+        greeting += ' 👑 (АДМИН)';
+      } else if (donator) {
+        greeting += ` (${donator.rank})`;
+      }
 
-      bot.chat(`👋 Добро пожаловать, ${player.username}${rankText}!`);
+      bot.chat(greeting);
+
+      tgBot.telegram.sendMessage(
+        config.tg.adminId,
+        `🚀 ${isAdmin ? '👑' : '🎮'} <b>${player.username}</b> присоединился\n${donator ? `Статус: ${donator.rank}` : 'Статус: обычный игрок'}`,
+        { parse_mode: 'HTML' }
+      ).catch(err => logError(`Ошибка: ${err.message}`));
+    });
+
+    bot.on('playerLeft', (player) => {
+      logInfo(`👋 ${player.username} вышел`);
     });
 
     bot.on('message', (jsonMsg) => {
@@ -397,7 +374,45 @@ function createMCBot() {
         const message = jsonMsg.toString();
         logDebug(`Чат: ${message}`);
 
-        // Парсим команды игроков
+        // ========== ПАРСИНГ ГРУПП LUCKPERMS ==========
+        if (botState.isCapturingGroups) {
+          // Ищем строки которые начинаются с "- "
+          const groupMatch = message.match(/^[-–]\s+([a-zA-Z0-9_]+)$/m);
+          
+          if (groupMatch && groupMatch[1]) {
+            const group = groupMatch[1];
+            const ignoreList = [
+              'lp', 'luckperms', 'groups', 'info', 'usage', 'default', 
+              'error', 'players', 'permission', 'user', 'group', 'track',
+              'log', 'sync', 'editor', 'verbose', 'tree', 'search',
+              'networksync', 'import', 'export', 'reloadconfig',
+              'bulkupdate', 'translations', 'creategroup', 'deletegroup',
+              'listgroups', 'createtrack', 'deletetrack', 'listtracks'
+            ];
+
+            if (!ignoreList.includes(group.toLowerCase()) && 
+                !botState.foundGroups.includes(group)) {
+              botState.foundGroups.push(group);
+              logDebug(`📍 Найдена группа: ${group}`);
+            }
+          }
+
+          // Альтернативный парсер
+          const altMatch = message.match(/^\s*([A-Z][A-Za-z0-9_]*)\s*$/);
+          if (altMatch && altMatch[1]) {
+            const potentialGroup = altMatch[1];
+            const ignoreList = ['LP', 'INFO', 'USAGE', 'DEFAULT', 'ERROR', 'PLAYERS'];
+            
+            if (!ignoreList.includes(potentialGroup.toUpperCase()) && 
+                !botState.foundGroups.includes(potentialGroup) &&
+                potentialGroup.length > 1) {
+              botState.foundGroups.push(potentialGroup);
+              logDebug(`📍 Найдена группа (alt): ${potentialGroup}`);
+            }
+          }
+        }
+
+        // ========== ПАРСИНГ КОМАНД ИГРОКОВ ==========
         const commandMatch = message.match(/^<([^>]+)>\s*!(\w+)\s*(.*)/);
         if (commandMatch) {
           const playerName = commandMatch[1];
@@ -424,8 +439,19 @@ function createMCBot() {
         const delay = Math.min(5000 * reconnectAttempts, 120000);
         logWarn(`🔄 Попытка ${reconnectAttempts}/${MAX_RECONNECT} через ${delay}мс`);
         setTimeout(createMCBot, delay);
+
+        tgBot.telegram.sendMessage(
+          config.tg.adminId,
+          `⚠️ <b>Попытка переподключения</b>\n${reconnectAttempts}/${MAX_RECONNECT}`,
+          { parse_mode: 'HTML' }
+        ).catch(err => logError(`Ошибка: ${err.message}`));
       } else {
         logError('КРИТИЧЕСКАЯ ОШИБКА: Максимум попыток!');
+        tgBot.telegram.sendMessage(
+          config.tg.adminId,
+          '🚨 <b>КРИТИЧЕСКАЯ ОШИБКА</b>\nБот не может переподключиться!',
+          { parse_mode: 'HTML' }
+        ).catch(err => logError(`Ошибка: ${err.message}`));
       }
     });
 
@@ -438,6 +464,14 @@ function createMCBot() {
 // ======================== ОБРАБОТКА КОМАНД ========================
 function handlePlayerCommand(playerName, command, args) {
   const donator = db.getDonator(playerName);
+  const isAdmin = db.isPlayerAdmin(playerName);
+
+  // ✅ АДМИНЫ МОГУТ ВСЕ
+  if (isAdmin) {
+    logInfo(`👑 АДМИН КОМАНДА: ${playerName} → !${command}`);
+    executeAdminCommand(playerName, command, args);
+    return;
+  }
 
   // Проверка 1: Только доны могут писать команды
   if (!donator) {
@@ -456,7 +490,6 @@ function handlePlayerCommand(playerName, command, args) {
     db.data.stats.blockedAttempts++;
     db.save();
     
-    // Уведомляем админа о подозрительной активности
     tgBot.telegram.sendMessage(
       config.tg.adminId,
       `🚨 <b>ПОПЫТКА ЗАПРЕЩЁННОЙ КОМАНДЫ</b>\n\n` +
@@ -497,17 +530,60 @@ function handlePlayerCommand(playerName, command, args) {
     return;
   }
 
-  // ✅ ВСЕ ПРОВЕРКИ ПРОЙДЕНЫ - ВЫПОЛНЯЕМ КОМАНДУ
+  // ✅ ВСЕ ПРОВЕРКИ ПРОЙДЕНЫ
   logInfo(`✅ КОМАНДА ОДОБРЕНА: ${playerName} → !${command}`);
   executeCommand(playerName, command, args, donator.rank);
 
-  // Устанавливаем кулдаун
   db.setCooldown(playerName, cmdInfo.cooldown);
   db.data.stats.totalCommands++;
   db.addLog(playerName, command, true, 'УСПЕШНО');
   db.save();
 }
 
+// ✅ АДМИН КОМАНДЫ
+function executeAdminCommand(playerName, command, args) {
+  switch (command) {
+    case 'say':
+      if (!args) {
+        bot.chat(`❌ ${playerName}, используй: !say [сообщение]`);
+        return;
+      }
+      bot.chat(args);
+      bot.chat(`✅ ${playerName} написал: ${args}`);
+      break;
+
+    case 'clear':
+      bot.chat('/clear');
+      bot.chat(`🧹 ${playerName} очистил инвентарь всех!`);
+      break;
+
+    case 'weather':
+      const weather = args || 'clear';
+      bot.chat(`/weather ${weather}`);
+      bot.chat(`⛅ ${playerName}, погода изменена на ${weather}`);
+      break;
+
+    case 'time':
+      const time = args || '12000';
+      bot.chat(`/time set ${time}`);
+      bot.chat(`⏰ ${playerName}, время установлено: ${time}`);
+      break;
+
+    case 'broadcast':
+      if (!args) {
+        bot.chat(`❌ ${playerName}, используй: !broadcast [сообщение]`);
+        return;
+      }
+      bot.chat(`§c§l[ОБЪЯВЛЕНИЕ]§r ${args}`);
+      logInfo(`📢 Объявление от ${playerName}: ${args}`);
+      break;
+
+    default:
+      bot.chat(`❌ ${playerName}, неизвестная админ команда !${command}`);
+  }
+}
+
+// 🎁 ОБЫЧНЫЕ КОМАНДЫ
 function executeCommand(playerName, command, args, rank) {
   switch (command) {
     case 'give':
@@ -576,7 +652,7 @@ app.use(express.json());
 
 app.get('/', (req, res) => {
   res.status(200).json({
-    status: '✅ VoyagersSpace Bot v3.1',
+    status: '✅ VoyagersSpace Bot v4.0',
     botConnected: !!bot?.entity,
     serverOnline: serverChecker.isOnline,
     commandsLoaded: Object.keys(commandsManager.getAllowedCommands()).length,
@@ -607,6 +683,10 @@ app.get('/logs', (req, res) => {
   res.json(logs);
 });
 
+app.get('/donators', (req, res) => {
+  res.json(db.getAllDonators());
+});
+
 app.listen(config.server.port, '0.0.0.0', () => {
   logInfo(`🌐 Express на ${config.server.port}`);
 });
@@ -618,26 +698,37 @@ tgBot.start(ctx => {
   if (!isAdmin(ctx.from.id)) return ctx.reply('❌ Доступ запрещен');
 
   ctx.reply(
-    '👋 <b>VoyagersSpace Bot v3.1</b>\n\n' +
+    '👋 <b>VoyagersSpace Bot v4.0</b>\n\n' +
     '🔒 <b>Система защиты команд активна!</b>\n\n' +
-    '<b>Команды:</b>\n' +
+    '<b>📋 Основные команды:</b>\n' +
     '/status - Статус\n' +
     '/commands - Все команды\n' +
     '/banned - Запрещённые\n' +
     '/logs - Логи\n' +
     '/stats - Статистика\n\n' +
-    '🎁 Введи ник для доната',
+    '<b>🎁 Управление донатами:</b>\n' +
+    '/adddonator [ник] [ранг]\n' +
+    '/removedonator [ник]\n' +
+    '/donators - Список\n' +
+    '/testgroups - Тест групп\n\n' +
+    '<b>⚙️ Администрирование:</b>\n' +
+    '/reloadcmds - Перезагрузить команды\n' +
+    '/setadmin [ник] - Сделать админом\n' +
+    '/removeadmin [ник] - Убрать админа\n' +
+    '/broadcastmsg [сообщение] - Объявление\n' +
+    '/help - Полная справка',
     { parse_mode: 'HTML' }
   );
 });
 
+// ✅ 1️⃣ КОМАНДА: Статус
 tgBot.command('status', ctx => {
   if (!isAdmin(ctx.from.id)) return ctx.reply('❌ Доступ запрещен');
 
   ctx.reply(
-    `<b>📊 Статус</b>\n\n` +
-    `БОТ: ${bot?.entity ? '✅' : '❌'}\n` +
-    `Сервер: ${serverChecker.isOnline ? '✅' : '❌'}\n` +
+    `<b>📊 Статус системы</b>\n\n` +
+    `БОТ: ${bot?.entity ? '✅ Онлайн' : '❌ Оффлайн'}\n` +
+    `Сервер: ${serverChecker.isOnline ? '✅ Онлайн' : '❌ Оффлайн'}\n` +
     `Команд: ${Object.keys(commandsManager.getAllowedCommands()).length}\n` +
     `Запрещено: ${Object.keys(commandsManager.getBannedCommands()).length}\n` +
     `Блокировок: ${db.data.stats.blockedAttempts}`,
@@ -645,6 +736,7 @@ tgBot.command('status', ctx => {
   );
 });
 
+// ✅ 2️⃣ КОМАНДА: Все команды
 tgBot.command('commands', ctx => {
   if (!isAdmin(ctx.from.id)) return ctx.reply('❌ Доступ запрещен');
 
@@ -660,6 +752,7 @@ tgBot.command('commands', ctx => {
   ctx.reply(text, { parse_mode: 'HTML' });
 });
 
+// ✅ 3️⃣ КОМАНДА: Запрещённые команды
 tgBot.command('banned', ctx => {
   if (!isAdmin(ctx.from.id)) return ctx.reply('❌ Доступ запрещен');
 
@@ -674,6 +767,7 @@ tgBot.command('banned', ctx => {
   ctx.reply(text, { parse_mode: 'HTML' });
 });
 
+// ✅ 4️⃣ КОМАНДА: Логи
 tgBot.command('logs', ctx => {
   if (!isAdmin(ctx.from.id)) return ctx.reply('❌ Доступ запрещен');
 
@@ -684,12 +778,13 @@ tgBot.command('logs', ctx => {
     const time = new Date(log.timestamp).toLocaleTimeString('ru-RU');
     const status = log.allowed ? '✅' : '❌';
     text += `${status} ${time} - ${log.player} → !${log.command}\n`;
-    if (log.reason) text += `    Причина: ${log.reason}\n`;
+    if (log.reason) text += `    ${log.reason}\n`;
   });
 
   ctx.reply(text, { parse_mode: 'HTML' });
 });
 
+// ✅ 5️⃣ КОМАНДА: Статистика
 tgBot.command('stats', ctx => {
   if (!isAdmin(ctx.from.id)) return ctx.reply('❌ Доступ запрещен');
 
@@ -699,7 +794,230 @@ tgBot.command('stats', ctx => {
     `<b>📈 Статистика</b>\n\n` +
     `Всего команд: ${stats.totalCommands}\n` +
     `Всего донатов: ${stats.totalDonats}\n` +
-    `Блокировок: ${stats.blockedAttempts}`,
+    `Блокировок: ${stats.blockedAttempts}\n` +
+    `Игроков онлайн: ${Object.keys(bot?.players || {}).length}`,
+    { parse_mode: 'HTML' }
+  );
+});
+
+// 🆕 6️⃣ НОВАЯ КОМАНДА: Добавить доната
+tgBot.command('adddonator', ctx => {
+  if (!isAdmin(ctx.from.id)) return ctx.reply('❌ Доступ запрещен');
+
+  const args = ctx.message.text.split(' ');
+  const playerName = args[1];
+  const rank = args[2]?.toUpperCase();
+
+  if (!playerName || !rank) {
+    return ctx.reply(
+      '❌ <b>Используй:</b> /adddonator [ник] [ранг]\n\n' +
+      '<b>Примеры:</b>\n' +
+      '/adddonator voyagerplay DIAMOND\n' +
+      '/adddonator player2 PREMIUM\n' +
+      '/adddonator player3 VIP',
+      { parse_mode: 'HTML' }
+    );
+  }
+
+  const validRanks = ['VIP', 'PREMIUM', 'DIAMOND'];
+  if (!validRanks.includes(rank)) {
+    return ctx.reply(`❌ Ранг должен быть: ${validRanks.join(', ')}`);
+  }
+
+  db.addDonator(playerName, rank);
+
+  ctx.reply(
+    `✅ <b>Донат добавлен!</b>\n\n` +
+    `Игрок: <code>${playerName}</code>\n` +
+    `Ранг: <code>${rank}</code>`,
+    { parse_mode: 'HTML' }
+  );
+
+  logInfo(`✅ Донат добавлен: ${playerName} - ${rank}`);
+});
+
+// 🆕 7️⃣ НОВАЯ КОМАНДА: Удалить доната
+tgBot.command('removedonator', ctx => {
+  if (!isAdmin(ctx.from.id)) return ctx.reply('❌ Доступ запрещен');
+
+  const args = ctx.message.text.split(' ');
+  const playerName = args[1];
+
+  if (!playerName) {
+    return ctx.reply('❌ <b>Используй:</b> /removedonator [ник]', { parse_mode: 'HTML' });
+  }
+
+  if (db.removeDonator(playerName)) {
+    ctx.reply(`✅ Донат удален: ${playerName}`);
+    logInfo(`✅ Донат удален: ${playerName}`);
+  } else {
+    ctx.reply(`❌ ${playerName} не найден в донатах`);
+  }
+});
+
+// 🆕 8️⃣ НОВАЯ КОМАНДА: Список доната
+tgBot.command('donators', ctx => {
+  if (!isAdmin(ctx.from.id)) return ctx.reply('❌ Доступ запрещен');
+
+  const donators = db.getAllDonators();
+
+  if (Object.keys(donators).length === 0) {
+    return ctx.reply('❌ Донатов еще нет');
+  }
+
+  let text = '<b>🎁 Список донатов</b>\n\n';
+
+  Object.entries(donators).forEach(([username, info]) => {
+    const isAdmin = info.isAdmin ? ' 👑' : '';
+    text += `• <code>${username}</code> - <b>${info.rank}</b>${isAdmin}\n`;
+  });
+
+  ctx.reply(text, { parse_mode: 'HTML' });
+});
+
+// 🆕 9️⃣ НОВАЯ КОМАНДА: Тест групп
+tgBot.command('testgroups', ctx => {
+  if (!isAdmin(ctx.from.id)) return ctx.reply('❌ Доступ запрещен');
+
+  if (!bot?.entity) {
+    return ctx.reply('❌ Бот не на сервере');
+  }
+
+  logInfo('🧪 ТЕСТИРОВАНИЕ: Запрашиваю список групп...');
+  
+  botState.foundGroups = [];
+  botState.isCapturingGroups = true;
+
+  ctx.reply('🔍 Тестирую /lp listgroups...');
+  bot.chat('/lp listgroups');
+
+  setTimeout(() => {
+    botState.isCapturingGroups = false;
+
+    const groupsList = botState.foundGroups.length > 0 
+      ? botState.foundGroups.join(', ')
+      : 'НИЧЕГО НЕ НАЙДЕНО';
+
+    ctx.reply(
+      `<b>🧪 Результат теста:</b>\n\n` +
+      `Найдено групп: ${botState.foundGroups.length}\n` +
+      `Группы: <code>${groupsList}</code>`,
+      { parse_mode: 'HTML' }
+    );
+
+    logInfo(`✅ Найдено групп: ${botState.foundGroups.length}`);
+  }, 3000);
+});
+
+// 🆕 🔟 НОВАЯ КОМАНДА: Сделать админом
+tgBot.command('setadmin', ctx => {
+  if (!isAdmin(ctx.from.id)) return ctx.reply('❌ Доступ запрещен');
+
+  const args = ctx.message.text.split(' ');
+  const playerName = args[1];
+
+  if (!playerName) {
+    return ctx.reply('❌ <b>Используй:</b> /setadmin [ник]', { parse_mode: 'HTML' });
+  }
+
+  const donator = db.getDonator(playerName);
+  if (donator) {
+    donator.isAdmin = true;
+    db.save();
+    ctx.reply(`✅ ${playerName} теперь АДМИН! 👑`);
+    logInfo(`✅ ${playerName} сделан админом`);
+  } else {
+    ctx.reply(`❌ ${playerName} не найден в системе`);
+  }
+});
+
+// 🆕 1️⃣1️⃣ НОВАЯ КОМАНДА: Убрать админа
+tgBot.command('removeadmin', ctx => {
+  if (!isAdmin(ctx.from.id)) return ctx.reply('❌ Доступ запрещен');
+
+  const args = ctx.message.text.split(' ');
+  const playerName = args[1];
+
+  if (!playerName) {
+    return ctx.reply('❌ <b>Используй:</b> /removeadmin [ник]', { parse_mode: 'HTML' });
+  }
+
+  const donator = db.getDonator(playerName);
+  if (donator) {
+    donator.isAdmin = false;
+    db.save();
+    ctx.reply(`✅ ${playerName} больше не админ`);
+    logInfo(`✅ ${playerName} убран из админов`);
+  } else {
+    ctx.reply(`❌ ${playerName} не найден в системе`);
+  }
+});
+
+// 🆕 1️⃣2️⃣ НОВАЯ КОМАНДА: Объявление
+tgBot.command('broadcastmsg', ctx => {
+  if (!isAdmin(ctx.from.id)) return ctx.reply('❌ Доступ запрещен');
+
+  if (!bot?.entity) {
+    return ctx.reply('❌ Бот не на сервере');
+  }
+
+  const message = ctx.message.text.replace('/broadcastmsg ', '').trim();
+
+  if (!message) {
+    return ctx.reply('❌ <b>Используй:</b> /broadcastmsg [сообщение]', { parse_mode: 'HTML' });
+  }
+
+  bot.chat(`§c§l[ОБЪЯВЛЕНИЕ]§r ${message}`);
+  ctx.reply(`✅ <b>Объявление отправлено:</b>\n${message}`, { parse_mode: 'HTML' });
+  logInfo(`📢 Объявление: ${message}`);
+});
+
+// 🆕 1️⃣3️⃣ НОВАЯ КОМАНДА: Перезагрузить команды
+tgBot.command('reloadcmds', ctx => {
+  if (!isAdmin(ctx.from.id)) return ctx.reply('❌ Доступ запрещен');
+
+  commandsManager.reloadCommands();
+  ctx.reply('✅ <b>Команды перезагружены!</b>', { parse_mode: 'HTML' });
+  logInfo('✅ Команды перезагружены через Telegram');
+});
+
+// 🆕 1️⃣4️⃣ НОВАЯ КОМАНДА: Справка
+tgBot.command('help', ctx => {
+  if (!isAdmin(ctx.from.id)) return ctx.reply('❌ Доступ запрещен');
+
+  ctx.reply(
+    `<b>📖 Полная справка VoyagersSpace Bot v4.0</b>\n\n` +
+    `<b>🎮 Команды в чате:</b>\n` +
+    `!give [предмет] [кол-во] - Выдать предмет\n` +
+    `!heal - Исцелить\n` +
+    `!tpall - Телепортировать всех\n` +
+    `!gamemode [режим] - Сменить режим\n` +
+    `!effect [эффект] [уровень] - Применить эффект\n` +
+    `!fly - Разрешить полёт\n` +
+    `!speed [уровень] - Дать скорость\n\n` +
+    `<b>👑 АДМИН команды в чате:</b>\n` +
+    `!say [сообщение] - Написать сообщение\n` +
+    `!clear - Очистить инвентарь\n` +
+    `!weather [погода] - Изменить погоду\n` +
+    `!time [время] - Установить время\n` +
+    `!broadcast [сообщение] - Объявление\n\n` +
+    `<b>📱 Telegram команды:</b>\n` +
+    `/status - Статус\n` +
+    `/commands - Команды\n` +
+    `/banned - Запрещённые\n` +
+    `/logs - Логи\n` +
+    `/stats - Статистика\n` +
+    `/adddonator [ник] [ранг] - Добавить доната\n` +
+    `/removedonator [ник] - Удалить доната\n` +
+    `/donators - Список доната\n` +
+    `/setadmin [ник] - Сделать админом\n` +
+    `/removeadmin [ник] - Убрать админа\n` +
+    `/broadcastmsg [сообщение] - Объявление\n` +
+    `/testgroups - Тест групп\n` +
+    `/reloadcmds - Перезагрузить команды\n\n` +
+    `<b>⏱️ Ограничения:</b>\n` +
+    `1 команда в 5 минут на игрока\n` +
+    `Только для донатов (кроме админов)`,
     { parse_mode: 'HTML' }
   );
 });
@@ -731,7 +1049,7 @@ tgBot.on('text', async ctx => {
     botState.isCapturingGroups = false;
 
     if (botState.foundGroups.length === 0) {
-      return ctx.reply('❌ Группы не найдены');
+      return ctx.reply('❌ Группы не найдены. Проверь LuckPerms!');
     }
 
     const buttons = botState.foundGroups.map(g => [
@@ -783,7 +1101,8 @@ process.on('SIGTERM', () => {
 
 // ======================== ИНИЦИАЛИЗАЦИЯ ========================
 async function initialize() {
-  logInfo('🚀 VoyagersSpace Bot v3.1 с системой защиты команд');
+  logInfo('🚀 VoyagersSpace Bot v4.0 запущен!');
+  logInfo(`✅ Админы в игре: ${config.gameAdmins.join(', ')}`);
 
   setInterval(async () => {
     await serverChecker.updateStatus();
