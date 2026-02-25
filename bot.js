@@ -471,16 +471,11 @@ function handlePlayerCommand(playerName, command, args) {
 function executeCommand(playerName, command, args, rank) {
   const isAdmin = rank === 'ADMIN';
 
-  // ============ ЭФФЕКТЫ ============
-  const executeEffect = (effect, duration = 300, level = 1) => {
-    bot.chat(`/effect give ${playerName} ${effect} ${duration} ${level}`);
-  };
-
   switch (command) {
-    // ============ ОБЫЧНЫЕ КОМАНДЫ ============
+    // ======================== ОБЫЧНЫЕ КОМАНДЫ ========================
     case 'give':
       if (!args) {
-        bot.chat(`❌ используй: !give [предмет] [кол-во]`);
+        bot.chat(`❌ ${playerName}, используй: !give [предмет] [кол-во]`);
         return;
       }
       const [item, amount = 1] = args.split(' ');
@@ -489,8 +484,8 @@ function executeCommand(playerName, command, args, rank) {
       break;
 
     case 'heal':
-      executeEffect('minecraft:instant_health', 1, 10);
-      bot.chat(`💚 ${playerName}, исцелен!`);
+      bot.chat(`/effect give ${playerName} minecraft:instant_health 1 10`);
+      bot.chat(`💚 ${playerName}, ты исцелен!`);
       break;
 
     case 'tpall':
@@ -501,147 +496,93 @@ function executeCommand(playerName, command, args, rank) {
     case 'gamemode':
       const mode = args || 'creative';
       bot.chat(`/gamemode ${mode} ${playerName}`);
-      bot.chat(`🎮 Режим: ${mode}`);
+      bot.chat(`🎮 ${playerName}, режим: ${mode}`);
       break;
 
     case 'effect':
       if (!args) {
-        bot.chat(`❌ используй: !effect [эффект] [уровень]`);
+        bot.chat(`❌ ${playerName}, используй: !effect [эффект] [уровень]`);
         return;
       }
       const [effect, level = 1] = args.split(' ');
-      executeEffect(effect, 300, level);
-      bot.chat(`✨ Эффект: ${effect}`);
+      bot.chat(`/effect give ${playerName} ${effect} 300 ${level}`);
+      bot.chat(`✨ ${playerName}, применен эффект!`);
       break;
 
     case 'fly':
       bot.chat(`/ability ${playerName} mayfly true`);
-      bot.chat(`🪁 Полёт разрешен!`);
+      bot.chat(`🪁 ${playerName}, полёт разрешен!`);
       break;
 
     case 'speed':
-      executeEffect('minecraft:speed', 300, args || 2);
-      bot.chat(`⚡ Скорость повышена!`);
+      const speedLevel = args || '2';
+      bot.chat(`/effect give ${playerName} minecraft:speed 300 ${speedLevel}`);
+      bot.chat(`⚡ ${playerName}, скорость повышена!`);
       break;
 
     case 'strength':
-      executeEffect('minecraft:strength', 300, args || 1);
-      bot.chat(`💪 Сила повышена!`);
+      const strengthLevel = args || '1';
+      bot.chat(`/effect give ${playerName} minecraft:strength 300 ${strengthLevel}`);
+      bot.chat(`💪 ${playerName}, сила повышена!`);
       break;
 
     case 'jump':
-      executeEffect('minecraft:jump_boost', 300, args || 5);
-      bot.chat(`⬆️ Прыжок повышен!`);
+      const jumpLevel = args || '5';
+      bot.chat(`/effect give ${playerName} minecraft:jump_boost 300 ${jumpLevel}`);
+      bot.chat(`⬆️ ${playerName}, прыжок повышен!`);
       break;
 
     case 'invisibility':
-      executeEffect('minecraft:invisibility', 300, 1);
-      bot.chat(`👻 Невидим!`);
+      bot.chat(`/effect give ${playerName} minecraft:invisibility 300 1`);
+      bot.chat(`👻 ${playerName}, теперь невидим!`);
       break;
 
     case 'nightvision':
-      executeEffect('minecraft:night_vision', 300, 1);
-      bot.chat(`👁️ Ночное зрение!`);
+      bot.chat(`/effect give ${playerName} minecraft:night_vision 300 1`);
+      bot.chat(`👁️ ${playerName}, ночное зрение включено!`);
       break;
 
     case 'resistance':
-      executeEffect('minecraft:resistance', 300, args || 5);
-      bot.chat(`🛡️ Защита включена!`);
+      const resistanceLevel = args || '5';
+      bot.chat(`/effect give ${playerName} minecraft:resistance 300 ${resistanceLevel}`);
+      bot.chat(`🛡️ ${playerName}, защита включена!`);
       break;
 
     case 'absorption':
-      executeEffect('minecraft:absorption', 300, args || 5);
-      bot.chat(`❤️ Доп. сердца!`);
+      const absorptionLevel = args || '5';
+      bot.chat(`/effect give ${playerName} minecraft:absorption 300 ${absorptionLevel}`);
+      bot.chat(`❤️ ${playerName}, получены доп. сердца!`);
       break;
 
     case 'haste':
-      executeEffect('minecraft:haste', 300, args || 2);
-      bot.chat(`⚙️ Спешка!`);
+      const hasteLevel = args || '2';
+      bot.chat(`/effect give ${playerName} minecraft:haste 300 ${hasteLevel}`);
+      bot.chat(`⚙️ ${playerName}, спешка включена!`);
       break;
 
     case 'saturation':
-      executeEffect('minecraft:saturation', 1, 10);
-      bot.chat(`🍗 Насыщение!`);
+      bot.chat(`/effect give ${playerName} minecraft:saturation 1 10`);
+      bot.chat(`🍗 ${playerName}, ты сыт!`);
       break;
 
     case 'water_breathing':
-      executeEffect('minecraft:water_breathing', 300, 1);
-      bot.chat(`🌊 Дыхание под водой!`);
+      bot.chat(`/effect give ${playerName} minecraft:water_breathing 300 1`);
+      bot.chat(`🌊 ${playerName}, можешь дышать под водой!`);
       break;
 
     case 'fire_resistance':
-      executeEffect('minecraft:fire_resistance', 300, 1);
-      bot.chat(`🔥 Огнеустойчив!`);
+      bot.chat(`/effect give ${playerName} minecraft:fire_resistance 300 1`);
+      bot.chat(`🔥 ${playerName}, огнеустойчив!`);
       break;
 
-    case 'slowness':
-      executeEffect('minecraft:slowness', 300, args || 1);
-      bot.chat(`🐌 Медлительность!`);
-      break;
-
-    case 'mining_fatigue':
-      executeEffect('minecraft:mining_fatigue', 300, args || 1);
-      bot.chat(`🧱 Усталость копания!`);
-      break;
-
-    case 'nausea':
-      executeEffect('minecraft:nausea', 300, 1);
-      bot.chat(`🌀 Тошнота!`);
-      break;
-
-    case 'blindness':
-      executeEffect('minecraft:blindness', 300, 1);
-      bot.chat(`⚫ Слепота!`);
-      break;
-
-    case 'hunger':
-      executeEffect('minecraft:hunger', 300, args || 1);
-      bot.chat(`😵 Голод!`);
-      break;
-
-    case 'weakness':
-      executeEffect('minecraft:weakness', 300, args || 1);
-      bot.chat(`❌ Слабость!`);
-      break;
-
-    case 'poison':
-      executeEffect('minecraft:poison', 300, args || 1);
-      bot.chat(`☠️ Яд!`);
-      break;
-
-    case 'wither':
-      executeEffect('minecraft:wither', 300, args || 1);
-      bot.chat(`💀 Высушивание!`);
-      break;
-
-    case 'levitation':
-      executeEffect('minecraft:levitation', 300, args || 1);
-      bot.chat(`⬆️ Левитация!`);
-      break;
-
-    case 'glowing':
-      executeEffect('minecraft:glowing', 300, 1);
-      bot.chat(`✨ Свечение!`);
-      break;
-
-    case 'luck':
-      executeEffect('minecraft:luck', 300, args || 3);
-      bot.chat(`🍀 Удача!`);
-      break;
-
-    case 'unluck':
-      executeEffect('minecraft:unluck', 300, args || 3);
-      bot.chat(`🍂 Невезение!`);
-      break;
-
-    // ============ АДМИН КОМАНДЫ ============
+    // ======================== АДМИН КОМАНДЫ ========================
     case 'say':
       if (!isAdmin) {
-        bot.chat(`❌ Только для ВЛАДЕЛЬЦА!`);
+        bot.chat(`❌ ${playerName}, эта команда только для ВЛАДЕЛЬЦА!`);
         return;
       }
       if (!args) {
-        bot.chat(`❌ используй: !say [текст]`);
+        bot.chat(`❌ ${playerName}, используй: !say [сообщение]`);
         return;
       }
       bot.chat(args);
@@ -649,11 +590,11 @@ function executeCommand(playerName, command, args, rank) {
 
     case 'broadcast':
       if (!isAdmin) {
-        bot.chat(`❌ Только для ВЛАДЕЛЬЦА!`);
+        bot.chat(`❌ ${playerName}, эта команда только для ВЛАДЕЛЬЦА!`);
         return;
       }
       if (!args) {
-        bot.chat(`❌ используй: !broadcast [текст]`);
+        bot.chat(`❌ ${playerName}, используй: !broadcast [сообщение]`);
         return;
       }
       bot.chat(`§c§l[ОБЪЯВЛЕНИЕ]§r §6${args}`);
@@ -662,26 +603,26 @@ function executeCommand(playerName, command, args, rank) {
 
     case 'clear':
       if (!isAdmin) {
-        bot.chat(`❌ Только для ВЛАДЕЛЬЦА!`);
+        bot.chat(`❌ ${playerName}, эта команда только для ВЛАДЕЛЬЦА!`);
         return;
       }
       bot.chat(`/clear ${playerName}`);
-      bot.chat(`🧹 Инвентарь очищен!`);
+      bot.chat(`🧹 ${playerName} очистил свой инвентарь!`);
       break;
 
     case 'weather':
       if (!isAdmin) {
-        bot.chat(`❌ Только для ВЛАДЕЛЬЦА!`);
+        bot.chat(`❌ ${playerName}, эта команда только для ВЛАДЕЛЬЦА!`);
         return;
       }
       const weather = args || 'clear';
       bot.chat(`/weather ${weather}`);
-      bot.chat(`⛅ Погода: ${weather}`);
+      bot.chat(`⛅ Погода изменена на ${weather}!`);
       break;
 
     case 'time':
       if (!isAdmin) {
-        bot.chat(`❌ Только для ВЛАДЕЛЬЦА!`);
+        bot.chat(`❌ ${playerName}, эта команда только для ВЛАДЕЛЬЦА!`);
         return;
       }
       const time = args || '12000';
@@ -691,24 +632,24 @@ function executeCommand(playerName, command, args, rank) {
 
     case 'kill':
       if (!isAdmin) {
-        bot.chat(`❌ Только для ВЛАДЕЛЬЦА!`);
+        bot.chat(`❌ ${playerName}, эта команда только для ВЛАДЕЛЬЦА!`);
         return;
       }
       if (!args) {
-        bot.chat(`❌ используй: !kill [игрок]`);
+        bot.chat(`❌ ${playerName}, используй: !kill [игрок]`);
         return;
       }
       bot.chat(`/kill ${args}`);
-      bot.chat(`⚔️ ${args} убит!`);
+      bot.chat(`⚔️ ${args} был убит!`);
       break;
 
     case 'tp':
       if (!isAdmin) {
-        bot.chat(`❌ Только для ВЛАДЕЛЬЦА!`);
+        bot.chat(`❌ ${playerName}, эта команда только для ВЛАДЕЛЬЦА!`);
         return;
       }
       if (!args) {
-        bot.chat(`❌ используй: !tp [игрок]`);
+        bot.chat(`❌ ${playerName}, используй: !tp [игрок]`);
         return;
       }
       bot.chat(`/tp ${args}`);
@@ -717,34 +658,34 @@ function executeCommand(playerName, command, args, rank) {
 
     case 'teleport':
       if (!isAdmin) {
-        bot.chat(`❌ Только для ВЛАДЕЛЬЦА!`);
+        bot.chat(`❌ ${playerName}, эта команда только для ВЛАДЕЛЬЦА!`);
         return;
       }
       if (!args) {
-        bot.chat(`❌ используй: !teleport [x] [y] [z]`);
+        bot.chat(`❌ ${playerName}, используй: !teleport [x] [y] [z]`);
         return;
       }
       const coords = args.split(' ');
       bot.chat(`/teleport ${playerName} ${coords[0]} ${coords[1]} ${coords[2]}`);
-      bot.chat(`📍 На координаты!`);
+      bot.chat(`📍 ${playerName}, телепортировано на координаты!`);
       break;
 
     case 'summon':
       if (!isAdmin) {
-        bot.chat(`❌ Только для ВЛАДЕЛЬЦА!`);
+        bot.chat(`❌ ${playerName}, эта команда только для ВЛАДЕЛЬЦА!`);
         return;
       }
       if (!args) {
-        bot.chat(`❌ используй: !summon [сущность]`);
+        bot.chat(`❌ ${playerName}, используй: !summon [сущность]`);
         return;
       }
       bot.chat(`/summon ${args}`);
-      bot.chat(`✨ Спавнено!`);
+      bot.chat(`✨ ${args} спавнена!`);
       break;
 
     case 'difficulty':
       if (!isAdmin) {
-        bot.chat(`❌ Только для ВЛАДЕЛЬЦА!`);
+        bot.chat(`❌ ${playerName}, эта команда только для ВЛАДЕЛЬЦА!`);
         return;
       }
       const difficulty = args || 'normal';
@@ -752,162 +693,10 @@ function executeCommand(playerName, command, args, rank) {
       bot.chat(`📊 Сложность: ${difficulty}`);
       break;
 
-    case 'gamerule':
-      if (!isAdmin) {
-        bot.chat(`❌ Только для ВЛАДЕЛЬЦА!`);
-        return;
-      }
-      if (!args) {
-        bot.chat(`❌ используй: !gamerule [правило] [значение]`);
-        return;
-      }
-      const ruleArgs = args.split(' ');
-      bot.chat(`/gamerule ${ruleArgs[0]} ${ruleArgs[1] || 'true'}`);
-      bot.chat(`⚙️ Правило изменено!`);
-      break;
-
-    case 'seed':
-      if (!isAdmin) {
-        bot.chat(`❌ Только для ВЛАДЕЛЬЦА!`);
-        return;
-      }
-      bot.chat(`/seed`);
-      bot.chat(`🌱 Сид выше!`);
-      break;
-
-    case 'save-all':
-      if (!isAdmin) {
-        bot.chat(`❌ Только для ВЛАДЕЛЬЦА!`);
-        return;
-      }
-      bot.chat(`/save-all`);
-      bot.chat(`💾 Сохранено!`);
-      break;
-
-    case 'reload':
-      if (!isAdmin) {
-        bot.chat(`❌ Только для ВЛАДЕЛЬЦА!`);
-        return;
-      }
-      bot.chat(`/reload`);
-      bot.chat(`🔄 Перезагружено!`);
-      break;
-
-    case 'pardon':
-      if (!isAdmin) {
-        bot.chat(`❌ Только для ВЛАДЕЛЬЦА!`);
-        return;
-      }
-      if (!args) {
-        bot.chat(`❌ используй: !pardon [игрок]`);
-        return;
-      }
-      bot.chat(`/pardon ${args}`);
-      bot.chat(`✅ ${args} разбанен!`);
-      break;
-
-    case 'ban':
-      if (!isAdmin) {
-        bot.chat(`❌ Только для ВЛАДЕЛЬЦА!`);
-        return;
-      }
-      if (!args) {
-        bot.chat(`❌ используй: !ban [игрок]`);
-        return;
-      }
-      bot.chat(`/ban ${args}`);
-      bot.chat(`❌ ${args} забанен!`);
-      break;
-
-    case 'kick':
-      if (!isAdmin) {
-        bot.chat(`❌ Только для ВЛАДЕЛЬЦА!`);
-        return;
-      }
-      if (!args) {
-        bot.chat(`❌ используй: !kick [игрок]`);
-        return;
-      }
-      bot.chat(`/kick ${args}`);
-      bot.chat(`👢 ${args} выгнан!`);
-      break;
-
-    case 'op':
-      if (!isAdmin) {
-        bot.chat(`❌ Только для ВЛАДЕЛЬЦА!`);
-        return;
-      }
-      if (!args) {
-        bot.chat(`❌ используй: !op [игрок]`);
-        return;
-      }
-      bot.chat(`/op ${args}`);
-      bot.chat(`👑 ${args} теперь ОП!`);
-      break;
-
-    case 'deop':
-      if (!isAdmin) {
-        bot.chat(`❌ Только для ВЛАДЕЛЬЦА!`);
-        return;
-      }
-      if (!args) {
-        bot.chat(`❌ используй: !deop [игрок]`);
-        return;
-      }
-      bot.chat(`/deop ${args}`);
-      bot.chat(`❌ ${args} больше не ОП!`);
-      break;
-
-    case 'list':
-      bot.chat(`/list`);
-      bot.chat(`👥 Список выше!`);
-      break;
-
-    case 'scoreboard':
-      if (!isAdmin) {
-        bot.chat(`❌ Только для ВЛАДЕЛЬЦА!`);
-        return;
-      }
-      if (!args) {
-        bot.chat(`❌ используй: !scoreboard [команда]`);
-        return;
-      }
-      bot.chat(`/scoreboard ${args}`);
-      bot.chat(`📊 Таблица обновлена!`);
-      break;
-
-    case 'worldborder':
-      if (!isAdmin) {
-        bot.chat(`❌ Только для ВЛАДЕЛЬЦА!`);
-        return;
-      }
-      if (!args) {
-        bot.chat(`❌ используй: !worldborder [значение]`);
-        return;
-      }
-      bot.chat(`/worldborder set ${args}`);
-      bot.chat(`🌍 Граница мира установлена!`);
-      break;
-
-    case 'spawnpoint':
-      if (!isAdmin) {
-        bot.chat(`❌ Только для ВЛАДЕЛЬЦА!`);
-        return;
-      }
-      if (!args) {
-        bot.chat(`❌ используй: !spawnpoint [x] [y] [z]`);
-        return;
-      }
-      const spawnCoords = args.split(' ');
-      bot.chat(`/spawnpoint ${playerName} ${spawnCoords[0]} ${spawnCoords[1]} ${spawnCoords[2]}`);
-      bot.chat(`🏠 Спавн установлен!`);
-      break;
-
     default:
-      bot.chat(`❌ Команда !${command} не найдена`);
+      bot.chat(`❌ ${playerName}, неизвестная команда !${command}`);
   }
 }
-
 // ======================== STATE ========================
 const botState = {
   pendingPlayer: '',
